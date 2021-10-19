@@ -111,10 +111,8 @@ ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt);
 int     lthread_wait_read(int fd, int timeout_ms);
 int     lthread_wait_write(int fd, int timeout_ms);
 #ifdef __FreeBSD__
-int     lthread_sendfile(int fd, int s, off_t offset, size_t nbytes,
-    struct sf_hdtr *hdtr);
+int     lthread_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr);
 #endif
-int lthread_poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
 #ifdef __cplusplus
 }

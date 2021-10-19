@@ -27,6 +27,7 @@
  */
 
 
+#include <stddef.h>
 #define LTHREAD_MMAP_MIN (1024 * 1024)
 
 #include <stdio.h>
@@ -53,6 +54,22 @@ static inline void _lthread_madvise(struct lthread *lt);
 static inline void _lthread_free(struct lthread *lt);
 static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sched* sched);
 static inline void _lthread_exit(struct lthread *lt);
+static uint64_t _lthread_min_timeout(struct lthread_sched *);
+static size_t  _lthread_poll(struct lthread_sched* sched);
+static void _lthread_schedule_expired(struct lthread_sched *sched);
+static inline int _lthread_sched_isdone(struct lthread_sched *sched);
+static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2);
+static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
+static inline void _lthread_handle_events(struct lthread_sched *sched, size_t num_events);
+static inline struct lthread* _lthread_handle_event(
+    struct lthread_sched *sched,
+    int fd,
+    enum lthread_event ev,
+    bool is_eof
+);
+
+RB_GENERATE(lthread_rb_sleep, lthread, sleep_node, _lthread_sleep_cmp);
+RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
 __thread struct lthread_sched* _lthread_curent_sched;
 
@@ -69,8 +86,7 @@ static void _exec(intptr_t ltp)
     _lthread_exit(lt);
 }
 
-void
-_lthread_yield(struct lthread *lt)
+void _lthread_yield(struct lthread *lt)
 {
     assert(lt == lthread_current());
     lt->sp = __builtin_frame_address(0);
@@ -218,7 +234,8 @@ void lthread_sleep(uint64_t msecs)
 
 void _lthread_renice(struct lthread *lt)
 {
-    if (++(lt->ops) >= 5){
+    if (++(lt->ops) >= 5)
+    {
         _lthread_push_ready(lt);
         _lthread_yield(lt);
     }
@@ -226,7 +243,8 @@ void _lthread_renice(struct lthread *lt)
 
 void _lthread_wakeup(struct lthread *lt)
 {
-    if (lt->state & BIT(LT_ST_SLEEPING)) {
+    if (lt->state & BIT(LT_ST_SLEEPING))
+    {
         _lthread_desched_sleep(lt);
         _lthread_push_ready(lt);
     }
@@ -249,11 +267,7 @@ void lthread_print_timestamp(char *msg)
 #define FD_EVENT(f) ((int32_t)(f))
 #define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
 
-static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2);
-static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
-
-static inline int
-_lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
+static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
 {
     if (l1->sleep_usecs < l2->sleep_usecs)
         return (-1);
@@ -262,8 +276,7 @@ _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
     return (1);
 }
 
-static inline int
-_lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
+static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 {
     if (l1->fd_wait < l2->fd_wait)
         return (-1);
@@ -272,24 +285,13 @@ _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
     return (1);
 }
 
-RB_GENERATE(lthread_rb_sleep, lthread, sleep_node, _lthread_sleep_cmp);
-RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
-
-static uint64_t _lthread_min_timeout(struct lthread_sched *);
-
-static void  _lthread_poll(struct lthread_sched* sched);
-static void _lthread_schedule_expired(struct lthread_sched *sched);
-static inline int _lthread_sched_isdone(struct lthread_sched *sched);
-
-static void _lthread_poll(struct lthread_sched* sched)
+static size_t _lthread_poll(struct lthread_sched* sched)
 {
     struct timespec t = {0, 0};
     int ret = 0;
     uint64_t usecs = 0;
-
     sched->num_new_events = 0;
     usecs = _lthread_min_timeout(sched);
-
     if (usecs && !_lthread_has_ready(sched))
     {
         t.tv_sec =  usecs / 1000000u;
@@ -302,18 +304,16 @@ static void _lthread_poll(struct lthread_sched* sched)
     {
         usecs = 0;
     }
-
     do
         ret = _lthread_poller_poll(sched, t);
     while(ret == -1 && errno == EINTR);
-    if (ret == -1)
+    if (ret < 0)
     {
         perror("error adding events to epoll/kqueue");
         assert(0);
+        ret = 0;
     }
-
-    sched->nevents = 0;
-    sched->num_new_events = ret;
+    return ret;
 }
 
 static inline uint64_t _sched_live_usecs(struct lthread_sched *sched)
@@ -352,67 +352,12 @@ _lthread_sched_isdone(struct lthread_sched *sched)
     );
 }
 
-static inline struct lthread* _lthread_handle_event(
-    struct lthread_sched *sched,
-    int fd,
-    enum lthread_event ev,
-    bool is_eof
-)
-{
-    struct lthread* lt = _lthread_desched_event(fd, ev);                                 
-    if (lt != NULL)
-    {
-        if (lt->state & BIT(LT_ST_WAIT_MULTI))
-        {
-            if (lt->ready_fds == 0)
-                _lthread_push_ready(lt);
-            _lthread_poller_set_fd_ready(lt, fd, ev, is_eof);
-        }
-        else
-        {
-            if (is_eof)
-                lt->state |= BIT(LT_ST_FDEOF);
-            _lthread_push_ready(lt);
-        }                                                                   
-    }
-    return lt;
-}
-
 static inline void _lthread_resume_ready(struct lthread_sched *sched)
 {
     struct lthread *lt = NULL;
     if ((lt = _lthread_pop_ready(sched)))
     {
         _lthread_resume(lt);
-    }
-}
-
-static inline void _lthread_handle_events(struct lthread_sched *sched)
-{
-    int p = 0;
-    int fd = 0;
-    int is_eof = 0;
-    while (sched->num_new_events) {
-        p = --sched->num_new_events;
-
-        fd = _lthread_poller_ev_get_fd(&sched->eventlist[p]);
-
-        /* 
-         * We got signaled via trigger to wakeup from polling
-         */
-        if (fd == sched->eventfd) {
-            _lthread_poller_ev_clear_trigger();
-            continue;
-        }
-
-        is_eof = _lthread_poller_ev_is_eof(&sched->eventlist[p]);
-        if (is_eof)
-            errno = ECONNRESET;
-
-        struct lthread* lt_read = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
-        struct lthread* lt_write = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
-
-        assert(lt_write != NULL || lt_read != NULL);
     }
 }
 
@@ -429,12 +374,49 @@ void lthread_run(void)
         if (false)//!_lthread_has_ready(sched) || !RB_EMPTY(&sched->waiting) || !RB_EMPTY(&sched->sleeping))
         {
             fprintf(stderr, "poll\n");
-            _lthread_poll(sched);
-            _lthread_handle_events(sched);
+            size_t num_events = _lthread_poll(sched);
+            _lthread_handle_events(sched, num_events);
         }
     }
     _lthread_sched_free();
     return;
+}
+
+static inline void _lthread_handle_events(struct lthread_sched *sched, size_t num_events)
+{
+    int fd = 0;
+    int is_eof = 0;
+    for (size_t i = 0; i < num_events; ++i)
+    {
+        fd = _lthread_poller_ev_get_fd(&sched->eventlist[i]);
+        if (fd == sched->eventfd) {
+            _lthread_poller_ev_clear_trigger();
+            continue;
+        }
+        is_eof = _lthread_poller_ev_is_eof(&sched->eventlist[i]);
+        if (is_eof)
+            errno = ECONNRESET;
+        struct lthread* lt_read = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
+        struct lthread* lt_write = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
+        assert(lt_write != NULL || lt_read != NULL);
+    }
+}
+
+static inline struct lthread* _lthread_handle_event(
+    struct lthread_sched *sched,
+    int fd,
+    enum lthread_event ev,
+    bool is_eof
+)
+{
+    struct lthread* lt = _lthread_desched_event(fd, ev);                                 
+    if (lt != NULL)
+    {
+        if (is_eof)
+            lt->state |= BIT(LT_ST_FDEOF);
+        _lthread_push_ready(lt);
+    }
+    return lt;
 }
 
 /*
@@ -450,14 +432,6 @@ void _lthread_cancel_event(struct lthread *lt)
     } else if (lt->state & BIT(LT_ST_WAIT_WRITE)) {
         _lthread_poller_ev_clear_wr(FD_ONLY(lt->fd_wait));
         lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
-    } else if (lt->state & BIT(LT_ST_WAIT_MULTI)) {
-        for (nfds_t i = 0; i < lt->nfds; ++i)
-            if (lt->pollfds[i].events & POLLIN)
-                _lthread_desched_event(lt->pollfds[i].fd, LT_EV_READ);
-            else if (lt->pollfds[i].events & POLLOUT)
-                _lthread_desched_event(lt->pollfds[i].fd, LT_EV_WRITE);
-            else
-                assert(0);
     }
     if (lt->fd_wait >= 0)
     {

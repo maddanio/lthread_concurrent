@@ -66,7 +66,6 @@ enum lthread_st {
     LT_ST_SLEEPING,     /* lthread is sleeping */
     LT_ST_EXPIRED,      /* lthread has expired and needs to run */
     LT_ST_FDEOF,        /* lthread socket has shut down */
-    LT_ST_WAIT_MULTI    /* lthread waiting on multiple fds */
 };
 
 struct lthread {
@@ -122,7 +121,7 @@ struct lthread_sched {
 #endif
     int                 eventfd;
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
-    int                 nevents;
+    int                 nchanges;
     int                 num_new_events;
 };
 
