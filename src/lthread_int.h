@@ -43,7 +43,7 @@
 #include "libcontext.h"
 
 #define LT_MAX_EVENTS    (1024)
-#define MAX_STACK_SIZE (2 * 1024 * 1024) /* 2MB */
+#define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
 
 #define BIT(x) (1 << (x))
@@ -51,6 +51,7 @@
 
 struct lthread;
 struct lthread_sched;
+typedef struct lthread_sched lthread_sched_t;
 
 TAILQ_HEAD(lthread_q, lthread);
 
@@ -91,18 +92,30 @@ struct lthread {
 };
 
 RB_HEAD(lthread_rb_sleep, lthread);
+typedef struct lthread_rb_sleep lthread_rb_sleep_t;
 RB_HEAD(lthread_rb_wait, lthread);
+typedef struct lthread_rb_wait lthread_rb_wait_t;
 RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
 struct lthread_sched {
-    uint64_t            birth;
-    cpu_ctx_t      ctx;
-    void                *stack;
+    // local
+    cpu_ctx_t           ctx;
     size_t              stack_size;
-    uint64_t            default_timeout;
-    struct lthread      *current_lthread;
     int                 page_size;
-    /* poller variables */
+    uint64_t            default_timeout;
+    struct lthread*     current_lthread;
+    lthread_sched_t*    next_sched;
+
+    // shared
+    lthread_sched_t*    sched_neighbor;
+    lthread_mutex_t     mutex;
+    struct lthread_q    ready;
+    struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
+    size_t              lthread_cache_size;
+
+    // poller stuff
+    lthread_rb_sleep_t  sleeping;
+    lthread_rb_wait_t   waiting;
     int                 poller_fd;
 #if defined(__FreeBSD__) || defined(__APPLE__)
     struct kevent       changelist[LT_MAX_EVENTS];
@@ -111,16 +124,6 @@ struct lthread_sched {
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
     int                 nevents;
     int                 num_new_events;
-    /* lists to save an lthread depending on its state */
-    /* lthreads ready to run */
-    struct lthread_q        ready;
-    /* lthreads zzzzz */
-    struct lthread_rb_sleep sleeping;
-    /* lthreads waiting on socket io */
-    struct lthread_rb_wait  waiting;
-    struct lthread* lthread_cache[LTHREAD_CACHE_SIZE];
-    size_t lthread_cache_size;
-    lthread_mutex_t mutex;
 };
 
 

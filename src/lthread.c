@@ -158,7 +158,6 @@ int _lthread_sched_create(size_t stack_size)
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
     RB_INIT(&new_sched->waiting);
-    new_sched->birth = _lthread_usec_now();
     TAILQ_INIT(&new_sched->ready);
     new_sched->mutex = lthread_mutex_create();
     bzero(&new_sched->ctx, sizeof(cpu_ctx_t));
@@ -319,10 +318,7 @@ static void _lthread_poll(struct lthread_sched* sched)
 
 static inline uint64_t _sched_live_usecs(struct lthread_sched *sched)
 {
-    return _lthread_diff_usecs(
-        sched->birth,
-        _lthread_usec_now()
-    );
+    return _lthread_usec_now();
 }
 
 static uint64_t
