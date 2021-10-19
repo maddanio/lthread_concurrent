@@ -27,13 +27,14 @@
  */
 
 #include "lthread_int.h"
+#include "lthread_poller.h"
 #include <stdio.h>
 #include <assert.h>
 
 static inline void
 _lthread_poller_flush_events(void)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     struct timespec tm = {0, 0};
 
     assert(kevent(sched->poller_fd, sched->changelist,
@@ -47,19 +48,23 @@ _lthread_poller_create(void)
     return kqueue();
 }
 
-inline int
-_lthread_poller_poll(struct timespec t)
+inline int _lthread_poller_poll(struct lthread_sched* sched, struct timespec t)
 {
-    struct lthread_sched *sched = lthread_get_sched();
-    return (kevent(sched->poller_fd, sched->changelist, sched->nevents,
-        sched->eventlist, LT_MAX_EVENTS, &t));
+    return kevent(
+        sched->poller_fd,
+        sched->changelist,
+        sched->nevents,
+        sched->eventlist,
+        LT_MAX_EVENTS,
+        &t
+    );
 }
 
 inline void
 _lthread_poller_ev_clear_rd(int fd)
 {
     struct kevent change;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     EV_SET(&change, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
     assert(kevent(sched->poller_fd, &change, 1, NULL, 0, NULL) != -1);
@@ -69,7 +74,7 @@ inline void
 _lthread_poller_ev_clear_wr(int fd)
 {
     struct kevent change;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     EV_SET(&change, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
     assert(kevent(sched->poller_fd, &change, 1, NULL, 0, NULL) != -1);
@@ -78,7 +83,7 @@ _lthread_poller_ev_clear_wr(int fd)
 inline void
 _lthread_poller_ev_register_rd(int fd)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     if (sched->nevents == LT_MAX_EVENTS)
         _lthread_poller_flush_events();
     EV_SET(&sched->changelist[sched->nevents++], fd, EVFILT_READ,
@@ -88,7 +93,7 @@ _lthread_poller_ev_register_rd(int fd)
 inline void
 _lthread_poller_ev_register_wr(int fd)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     if (sched->nevents == LT_MAX_EVENTS)
         _lthread_poller_flush_events();
     EV_SET(&sched->changelist[sched->nevents++], fd, EVFILT_WRITE,
@@ -98,7 +103,7 @@ _lthread_poller_ev_register_wr(int fd)
 inline void
 _lthread_poller_ev_register_trigger(void)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     struct kevent change;
     struct kevent event;
     struct timespec tm = {0, 0};
@@ -111,7 +116,7 @@ _lthread_poller_ev_register_trigger(void)
 inline void
 _lthread_poller_ev_clear_trigger(void)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     struct kevent change;
     struct kevent event;
     struct timespec tm = {0, 0};

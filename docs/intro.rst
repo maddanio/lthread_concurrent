@@ -13,8 +13,6 @@ To run an lthread scheduler in each pthread, launch a pthread and create lthread
 
 The scheduler is build around epoll/kqueue and uses an rbtree to track which lthreads needs to run next.
 
-If you need to execute an expensive computation or make a blocking call inside an lthread, you can surround the block of code with `lthread_compute_begin()` and `lthread_compute_end()`, which moves the lthread into an lthread_compute_scheduler that runs in its own pthread to avoid blocking other lthreads. lthread_compute_schedulers are created when needed and they die after 60 seconds of inactivity. `lthread_compute_begin()` tries to pick an already created and free lthread_compute_scheduler before it creates a new one.
-
 Installation
 ------------
 

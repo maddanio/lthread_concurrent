@@ -62,19 +62,7 @@ Webserver
             return;
         }
 
-        /*
-         * Run an expensive computation without blocking other lthreads.
-         * lthread_compute_begin() will yield http_serv coroutine and resumes
-         * it in a compute scheduler that runs in a pthread. If a compute scheduler
-         * is already available and free it will be used otherwise a compute scheduler
-         * is created and launched in a new pthread. After the compute scheduler
-         * resumes the lthread it will wait 60 seconds for a new job and dies after 60
-         * of inactivity.
-         */
-        lthread_compute_begin();
-            /* make an expensive call without blocking other coroutines */
-            ret = fibonacci(35);
-        lthread_compute_end();
+        ret = fibonacci(35);
 
         /* reply back to user */
         lthread_send(cli_info->fd, reply, strlen(reply), 0);
@@ -97,8 +85,6 @@ Webserver
         cli_info_t *cli_info = NULL;
         char ipstr[INET6_ADDRSTRLEN];
         lthread_detach();
-
-        DEFINE_LTHREAD;
 
         /* create listening socket */
         lsn_fd = lthread_socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);

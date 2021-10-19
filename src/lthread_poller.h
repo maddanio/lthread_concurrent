@@ -41,10 +41,13 @@
 
 struct lthread_sched;
 struct lthread;
-enum lthread_event;
+enum lthread_event {
+    LT_EV_READ,
+    LT_EV_WRITE
+};
 
 int _lthread_poller_create(void);
-int _lthread_poller_poll(struct timespec t);
+int _lthread_poller_poll(struct lthread_sched* sched, struct timespec t);
 void _lthread_poller_ev_register_rd(int fd);
 void _lthread_poller_ev_register_wr(int fd);
 void _lthread_poller_ev_clear_wr(int fd);

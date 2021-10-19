@@ -148,25 +148,6 @@ lthread_cond_broadcast
     :param lthread_cond_t* c: condition variable created by :c:func:`lthread_cond_create()`
                               and shared between lthreads requiring synchronization.
 
-lthread_set_data
-----------------
-.. c:function:: void lthread_set_data(void *data)
-
-    Sets data bound to the lthread. This value can be retrieved anywhere in
-    the lthread using :c:func:`lthread_get_data()`.
-
-    :param void* data: value to be set.
-
-
-lthread_get_data
-----------------
-.. c:function:: void *lthread_get_data(void)
-
-    Returns the value set for the current lthread.
-
-    :return: Value set by :c:func:`lthread_set_data()`
-
-
 lthread_current
 ---------------
 .. c:function:: lthread_t *lthread_current()
@@ -175,30 +156,3 @@ lthread_current
 
     :return: ptr to the current lthread running.
 
-
-lthread_compute_begin
----------------------
-.. c:function:: int lthread_compute_begin(void)
-
-    Resumes lthread inside a pthread to run expensive computations or make a
-    blocking call like `gethostbyname()`. This call *must* be followed by
-    :c:func:`lthread_compute_end()` after the computation and/or blocking calls
-    statements have been made, to resume the lthread in its original lthread scheduler.
-    No lthread_* calls can be made during the 2 calls.
-
-    :return: 0 on success.
-    :return: -1 if lthread failed to resume it in a pthread.
-
-lthread_compute_end
--------------------
-.. c:function:: void lthread_compute_end(void)
-
-    Moves lthread from pthread back to the lthread scheduler it was running on.
-
-DEFINE_LTHREAD
---------------
-
-.. c:macro:: DEFINE_LTHREAD(name)
-
-    Sets the name of the function inside the lthread structure for easier
-    crash debugging. Must be called inside the lthread.

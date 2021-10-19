@@ -52,7 +52,7 @@
 #define LTHREAD_WAIT(fn, event)                                 \
 fn                                                              \
 {                                                               \
-    struct lthread *lt = lthread_get_sched()->current_lthread;  \
+    struct lthread *lt = _lthread_get_sched()->current_lthread;  \
     _lthread_sched_event(lt, fd, event, timeout_ms);            \
     if (lt->state & BIT(LT_ST_FDEOF))                           \
         return (-1);                                            \
@@ -64,7 +64,7 @@ fn                                                              \
 #define LTHREAD_RECV(x, y)                                  \
 x {                                                         \
     ssize_t ret = 0;                                        \
-    struct lthread *lt = lthread_get_sched()->current_lthread;   \
+    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
     while (1) {                                             \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
@@ -86,7 +86,7 @@ x {                                                         \
 x {                                                         \
     ssize_t ret = 0;                                        \
     ssize_t recvd = 0;                                      \
-    struct lthread *lt = lthread_get_sched()->current_lthread;   \
+    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
                                                             \
     while (recvd != length) {                               \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
@@ -114,7 +114,7 @@ x {                                                         \
 x {                                                         \
     ssize_t ret = 0;                                        \
     ssize_t sent = 0;                                       \
-    struct lthread *lt = lthread_get_sched()->current_lthread;   \
+    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
     while (sent != length) {                                \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
@@ -135,7 +135,7 @@ x {                                                         \
 #define LTHREAD_SEND_ONCE(x, y)                             \
 x {                                                         \
     ssize_t ret = 0;                                        \
-    struct lthread *lt = lthread_get_sched()->current_lthread;   \
+    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
     while (1) {                                             \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
@@ -151,11 +151,10 @@ x {                                                         \
 
 const struct linger nolinger = { .l_onoff = 1, .l_linger = 1 };
 
-int
-lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
+int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
 {
     int ret = -1;
-    struct lthread *lt = lthread_get_sched()->current_lthread;
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     while (1) {
         _lthread_renice(lt);
@@ -194,21 +193,20 @@ lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
     return (ret);
 }
 
-int
-lthread_close(int fd)
+int lthread_close(int fd)
 {
     struct lthread *lt = NULL;
 
     /* wake up the lthreads waiting on this fd and notify them of close */
     lt = _lthread_desched_event(fd, LT_EV_READ);
     if (lt) {
-        TAILQ_INSERT_TAIL(&lthread_get_sched()->ready, lt, ready_next);
+        TAILQ_INSERT_TAIL(&_lthread_get_sched()->ready, lt, ready_next);
         lt->state |= BIT(LT_ST_FDEOF);
     }
 
     lt = _lthread_desched_event(fd, LT_EV_WRITE);
     if (lt) {
-        TAILQ_INSERT_TAIL(&lthread_get_sched()->ready, lt, ready_next);
+        TAILQ_INSERT_TAIL(&_lthread_get_sched()->ready, lt, ready_next);
         lt->state |= BIT(LT_ST_FDEOF);
     }
 
@@ -216,8 +214,7 @@ lthread_close(int fd)
     return (close(fd));
 }
 
-int
-lthread_socket(int domain, int type, int protocol)
+int lthread_socket(int domain, int type, int protocol)
 {
     int fd;
 #if defined(__FreeBSD__) || defined(__APPLE__)
@@ -364,13 +361,12 @@ LTHREAD_SEND_ONCE(
     sendto(fd, buf, length, flags FLAG, dest_addr, dest_len)
 )
 
-int
-lthread_connect(int fd, struct sockaddr *name, socklen_t namelen,
+int lthread_connect(int fd, struct sockaddr *name, socklen_t namelen,
     uint64_t timeout)
 {
 
     int ret = 0;
-    struct lthread *lt = lthread_get_sched()->current_lthread;
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     while (1) {
         _lthread_renice(lt);
@@ -393,12 +389,11 @@ lthread_connect(int fd, struct sockaddr *name, socklen_t namelen,
     return (ret);
 }
 
-ssize_t
-lthread_writev(int fd, struct iovec *iov, int iovcnt)
+ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt)
 {
     ssize_t total = 0;
     int iov_index = 0;
-    struct lthread *lt = lthread_get_sched()->current_lthread;
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     do {
         _lthread_renice(lt);
@@ -427,44 +422,43 @@ lthread_writev(int fd, struct iovec *iov, int iovcnt)
 }
 
 #ifdef __FreeBSD__
-int
-lthread_sendfile(int fd, int s, off_t offset, size_t nbytes,
-    struct sf_hdtr *hdtr)
+int lthread_sendfile(
+    int fd,
+    int s,
+    off_t offset,
+    size_t nbytes,
+    struct sf_hdtr *hdtr
+)
 {
-
     off_t sbytes = 0;
     int ret = 0;
-    struct lthread *lt = lthread_get_sched()->current_lthread;
-
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
     do {
         ret = sendfile(fd, s, offset, nbytes, hdtr, &sbytes, 0);
-
         if (ret == 0)
             return (0);
-
         if (sbytes)
             offset += sbytes;
-
         sbytes = 0;
-
-        if (ret == -1 && EAGAIN == errno)
-            _lthread_sched_event(lt, s, LT_EV_WRITE, 0);
-        else if (ret == -1)
-            return (-1);
-
+        if (ret == -1)
+        {
+            if (errno == EAGAIN)
+                _lthread_sched_event(lt, s, LT_EV_WRITE, 0);
+            else
+                return -1;
+        }
     } while (1);
 }
 #endif
 
 
-int
-lthread_poll(struct pollfd *fds, nfds_t nfds, int timeout)
+int lthread_poll(struct pollfd *fds, nfds_t nfds, int timeout)
 {
     int i = 0;
     if (timeout == 0)
         return poll(fds, nfds, 0);
 
-    struct lthread *lt = lthread_get_sched()->current_lthread;
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
     /* schedule fd events, pass -1 to avoid yielding */
     for (i = 0; i < nfds; i++) {
         if (fds[i].events & POLLIN)
@@ -477,16 +471,14 @@ lthread_poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
     lt->ready_fds = 0;
     lt->fd_wait = -1;
-    /* clear wait_read/write flags set by _lthread_sched_event */
+
     lt->state &= CLEARBIT(LT_ST_WAIT_READ);
     lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
-    /* we are waiting on multiple fd events */
     lt->state |= BIT(LT_ST_WAIT_MULTI);
 
     lt->pollfds = fds;
     lt->nfds = nfds;
 
-    /* go to sleep until one or more of the fds are ready or until we timeout */
     _lthread_sched_sleep(lt, (uint64_t)timeout);
 
     lt->pollfds = NULL;

@@ -39,10 +39,8 @@ _lthread_poller_create(void)
 }
 
 inline int
-_lthread_poller_poll(struct timespec t)
+_lthread_poller_poll(struct lthread_sched* sched, struct timespec t)
 {
-    struct lthread_sched *sched = lthread_get_sched();
-
     return (epoll_wait(sched->poller_fd, sched->eventlist, LT_MAX_EVENTS,
         t.tv_sec*1000.0 + t.tv_nsec/1000000.0));
 }
@@ -52,7 +50,7 @@ _lthread_poller_ev_clear_rd(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     ev.data.fd = fd;
     ev.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
@@ -65,7 +63,7 @@ _lthread_poller_ev_clear_wr(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     ev.data.fd = fd;
     ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
@@ -78,7 +76,7 @@ _lthread_poller_ev_register_rd(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     ev.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
     ev.data.fd = fd;
@@ -93,7 +91,7 @@ _lthread_poller_ev_register_wr(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
 
     ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
     ev.data.fd = fd;
@@ -136,7 +134,7 @@ _lthread_poller_ev_is_read(struct epoll_event *ev)
 inline void
 _lthread_poller_ev_register_trigger(void)
 {
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     int ret = 0;
     struct epoll_event ev;
 
@@ -154,7 +152,7 @@ inline void
 _lthread_poller_ev_clear_trigger(void)
 {
     uint64_t tmp;
-    struct lthread_sched *sched = lthread_get_sched();
+    struct lthread_sched *sched = _lthread_get_sched();
     assert(read(sched->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));
 }
 

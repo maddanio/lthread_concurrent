@@ -19,15 +19,13 @@ a(lthread_t *lt ,void *arg)
 	struct timeval t2 = {0, 0};
     char x = 'a';
     char *y = &x;
-    DEFINE_LTHREAD;
     lthread_detach();
 
     printf("char *p is %p, %c\n", &x, x);
 	while (i--) {
-        lthread_compute_begin();
+        // todo: yield
             test(y);
             printf("I am A in a compute thread \n");
-        lthread_compute_end();
         printf("char *p became %p, %c\n", &x, x);
         printf("A going for a nap\n");
         lthread_sleep(3000);
@@ -42,16 +40,14 @@ b(lthread_t *lt ,void *x)
 	int i = 3;
 	struct timeval t1 = {0, 0};
 	struct timeval t2 = {0, 0};
-    DEFINE_LTHREAD;
     lthread_detach();
 
     lthread_sleep(1000);
 	while (i--) {
     printf(" I am B before begin\n");
-    lthread_compute_begin();
+    // todo: yield
         printf("I am B in a compute thread \n");
         sleep(10);
-    lthread_compute_end();
     printf("B after  sleep\n");
 	}
 	printf("b is exiting\n");

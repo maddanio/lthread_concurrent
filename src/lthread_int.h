@@ -37,105 +37,54 @@
 #include <time.h>
 
 #include "lthread_poller.h"
+#include "lthread_mutex.h"
 #include "queue.h"
 #include "tree.h"
+#include "libcontext.h"
 
 #define LT_MAX_EVENTS    (1024)
-#define MAX_STACK_SIZE (128*1024) /* 128k */
+#define MAX_STACK_SIZE (2 * 1024 * 1024) /* 2MB */
+#define LTHREAD_CACHE_SIZE 32
 
 #define BIT(x) (1 << (x))
 #define CLEARBIT(x) ~(1 << (x))
 
 struct lthread;
 struct lthread_sched;
-struct lthread_compute_sched;
-struct lthread_io_sched;
-struct lthread_cond;
 
-LIST_HEAD(lthread_l, lthread);
 TAILQ_HEAD(lthread_q, lthread);
 
 typedef void (*lthread_func)(void *);
 
-struct cpu_ctx {
-    void     *esp;
-    void     *ebp;
-    void     *eip;
-    void     *edi;
-    void     *esi;
-    void     *ebx;
-    void     *r1;
-    void     *r2;
-    void     *r3;
-    void     *r4;
-    void     *r5;
-};
-
-enum lthread_event {
-    LT_EV_READ,
-    LT_EV_WRITE
-};
-
-enum lthread_compute_st {
-    LT_COMPUTE_BUSY,
-    LT_COMPUTE_FREE,
-};
+typedef fcontext_t cpu_ctx_t;
 
 enum lthread_st {
     LT_ST_WAIT_READ,    /* lthread waiting for READ on socket */
     LT_ST_WAIT_WRITE,   /* lthread waiting for WRITE on socket */
-    LT_ST_NEW,          /* lthread spawned but needs initialization */
-    LT_ST_READY,        /* lthread is ready to run */
     LT_ST_EXITED,       /* lthread has exited and needs cleanup */
-    LT_ST_BUSY,         /* lthread is waiting on join/cond/compute/io */
     LT_ST_SLEEPING,     /* lthread is sleeping */
     LT_ST_EXPIRED,      /* lthread has expired and needs to run */
     LT_ST_FDEOF,        /* lthread socket has shut down */
-    LT_ST_DETACH,       /* lthread frees when done, else it waits to join */
-    LT_ST_CANCELLED,    /* lthread has been cancelled */
-    LT_ST_PENDING_RUNCOMPUTE, /* lthread needs to run in compute sched, step1 */
-    LT_ST_RUNCOMPUTE,   /* lthread needs to run in compute sched (2), step2 */
-    LT_ST_WAIT_IO_READ, /* lthread waiting for READ IO to finish */
-    LT_ST_WAIT_IO_WRITE,/* lthread waiting for WRITE IO to finish */
     LT_ST_WAIT_MULTI    /* lthread waiting on multiple fds */
 };
 
 struct lthread {
-    struct cpu_ctx          ctx;            /* cpu ctx info */
+    cpu_ctx_t               ctx;            /* cpu ctx info */
     lthread_func            fun;            /* func lthread is running */
     void                    *arg;           /* func args passed to func */
-    void                    *data;          /* user ptr attached to lthread */
     size_t                  stack_size;     /* current stack_size */
     size_t                  last_stack_size; /* last yield  stack_size */
     enum lthread_st         state;          /* current lthread state */
     struct lthread_sched    *sched;         /* scheduler lthread belongs to */
-    uint64_t                birth;          /* time lthread was born */
-    uint64_t                id;             /* lthread id */
     int64_t                 fd_wait;        /* fd we are waiting on */
-    char                    funcname[64];   /* optional func name */
-    struct lthread          *lt_join;       /* lthread we want to join on */
-    void                    **lt_exit_ptr;  /* exit ptr for lthread_join */
     void                    *stack;         /* ptr to lthread_stack */
-    void                    *ebp;           /* saved for compute sched */
+    void                    *sp;            /* ptr to last stack ptr */
     uint32_t                ops;            /* num of ops since yield */
-    uint64_t                sleep_usecs;    /* how long lthread is sleeping */
+    uint64_t                sleep_usecs;    /* until when lthread is sleeping */
     RB_ENTRY(lthread)       sleep_node;     /* sleep tree node pointer */
     RB_ENTRY(lthread)       wait_node;      /* event tree node pointer */
-    LIST_ENTRY(lthread)     busy_next;      /* blocked lthreads */
     TAILQ_ENTRY(lthread)    ready_next;     /* ready to run list */
-    TAILQ_ENTRY(lthread)    defer_next;     /* ready to run after deferred job */
-    TAILQ_ENTRY(lthread)    cond_next;      /* waiting on a cond var */
-    TAILQ_ENTRY(lthread)    io_next;        /* waiting its turn in io */
-    TAILQ_ENTRY(lthread)    compute_next;   /* waiting to run in compute sched */
-    struct {
-        void *buf;
-        size_t nbytes;
-        int fd;
-        int ret;
-        int err;
-    } io;
-    /* lthread_compute schduler - when running in compute block */
-    struct lthread_compute_sched    *compute_sched;
+    TAILQ_ENTRY(lthread)    blocked_next;      /* blocked on a synchronization primitve */
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
@@ -145,16 +94,11 @@ RB_HEAD(lthread_rb_sleep, lthread);
 RB_HEAD(lthread_rb_wait, lthread);
 RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
-struct lthread_cond {
-    struct lthread_q blocked_lthreads;
-};
-
 struct lthread_sched {
     uint64_t            birth;
-    struct cpu_ctx      ctx;
+    cpu_ctx_t      ctx;
     void                *stack;
     size_t              stack_size;
-    int                 spawned_lthreads;
     uint64_t            default_timeout;
     struct lthread      *current_lthread;
     int                 page_size;
@@ -167,64 +111,73 @@ struct lthread_sched {
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
     int                 nevents;
     int                 num_new_events;
-    pthread_mutex_t     defer_mutex;
     /* lists to save an lthread depending on its state */
     /* lthreads ready to run */
     struct lthread_q        ready;
-    /* lthreads ready to run after io or compute is done */
-    struct lthread_q        defer;
-    /* lthreads in join/cond_wait/io/compute */
-    struct lthread_l        busy;
     /* lthreads zzzzz */
     struct lthread_rb_sleep sleeping;
     /* lthreads waiting on socket io */
     struct lthread_rb_wait  waiting;
+    struct lthread* lthread_cache[LTHREAD_CACHE_SIZE];
+    size_t lthread_cache_size;
+    lthread_mutex_t mutex;
 };
 
 
-int         sched_create(size_t stack_size);
-
-int         _lthread_resume(struct lthread *lt);
+int _lthread_sched_create(size_t stack_size);
+void _lthread_wakeup(struct lthread *lt);
+int _lthread_resume(struct lthread *lt);
 void _lthread_renice(struct lthread *lt);
-void        _sched_free(struct lthread_sched *sched);
-void        _lthread_del_event(struct lthread *lt);
-
-void        _lthread_yield(struct lthread *lt);
-void        _lthread_free(struct lthread *lt);
-void        _lthread_desched_sleep(struct lthread *lt);
-void        _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-void        _lthread_sched_busy_sleep(struct lthread *lt, uint64_t msecs);
-void        _lthread_cancel_event(struct lthread *lt);
+void _lthread_sched_free();
+void _lthread_yield(struct lthread *lt);
+void _lthread_desched_sleep(struct lthread *lt);
+void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
+void _lthread_cancel_event(struct lthread *lt);
 struct lthread* _lthread_desched_event(int fd, enum lthread_event e);
-void        _lthread_sched_event(struct lthread *lt, int fd,
-    enum lthread_event e, uint64_t timeout);
+void _lthread_sched_event(
+    struct lthread *lt,
+    int fd,
+    enum lthread_event e,
+    uint64_t timeout
+);
+int _lthread_switch(cpu_ctx_t *new_ctx, cpu_ctx_t *cur_ctx);
 
-int         _switch(struct cpu_ctx *new_ctx, struct cpu_ctx *cur_ctx);
-int         _save_exec_state(struct lthread *lt);
-void        _lthread_compute_add(struct lthread *lt);
-void         _lthread_io_worker_init();
+extern __thread struct lthread_sched* _lthread_curent_sched;
 
-extern pthread_key_t lthread_sched_key;
-void print_timestamp(char *);
-
-static inline struct lthread_sched*
-lthread_get_sched()
+static inline struct lthread_sched* _lthread_get_sched()
 {
-    return pthread_getspecific(lthread_sched_key);
+    return _lthread_curent_sched;
 }
 
-static inline uint64_t
-_lthread_diff_usecs(uint64_t t1, uint64_t t2)
+static inline uint64_t _lthread_diff_usecs(uint64_t t1, uint64_t t2)
 {
     return (t2 - t1);
 }
 
-static inline uint64_t
-_lthread_usec_now(void)
+static inline uint64_t _lthread_usec_now(void)
 {
     struct timeval t1 = {0, 0};
     gettimeofday(&t1, NULL);
     return (t1.tv_sec * 1000000) + t1.tv_usec;
 }
+
+static inline void _lthread_push_ready(struct lthread* lt)
+{
+    TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);    
+}
+
+static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
+{
+    struct lthread *result = TAILQ_FIRST(&sched->ready);
+    if (result)
+        TAILQ_REMOVE(&sched->ready, result, ready_next);
+    return result;
+}
+
+static inline bool _lthread_has_ready(struct lthread_sched *sched)
+{
+    return !TAILQ_EMPTY(&sched->ready);
+}
+
 
 #endif
