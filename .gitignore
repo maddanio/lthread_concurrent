@@ -18,3 +18,5 @@ src/.libs
 *.DS_Store
 *.swp
 build*
+/.cache
+/compile_commands.json

@@ -96,6 +96,12 @@ RB_HEAD(lthread_rb_wait, lthread);
 typedef struct lthread_rb_wait lthread_rb_wait_t;
 RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
+typedef enum {
+    LTHREAD_SCHED_WILL_BLOCK = 0,
+    LTHREAD_SCHED_WONT_BLOCK,
+    LTHREAD_SCHED_IS_BLOCKING,
+} lthread_sched_block_state_t;
+
 struct lthread_sched {
     // local
     cpu_ctx_t           ctx;
@@ -107,6 +113,7 @@ struct lthread_sched {
 
     // shared
     lthread_sched_t*    sched_neighbor;
+    lthread_sched_block_state_t block_state;
     lthread_mutex_t     mutex;
     struct lthread_q    ready;
     struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
@@ -161,19 +168,6 @@ static inline uint64_t _lthread_usec_now(void)
     struct timeval t1 = {0, 0};
     gettimeofday(&t1, NULL);
     return (t1.tv_sec * 1000000) + t1.tv_usec;
-}
-
-static inline void _lthread_push_ready(struct lthread* lt)
-{
-    TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);    
-}
-
-static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
-{
-    struct lthread *result = TAILQ_FIRST(&sched->ready);
-    if (result)
-        TAILQ_REMOVE(&sched->ready, result, ready_next);
-    return result;
 }
 
 static inline bool _lthread_has_ready(struct lthread_sched *sched)
