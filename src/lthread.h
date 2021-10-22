@@ -50,10 +50,10 @@ extern "C" {
 lthread_t* lthread_spawn(lthread_func func, void* arg);
 void    lthread_yield();
 void    lthread_sleep(uint64_t msecs);
-void    lthread_run(void);
 void    lthread_exit();
 lthread_t* lthread_current();
 int     lthread_init(size_t size);
+void    lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size_t num_aux_threads);
 
 // util
 void    lthread_print_timestamp(char *);

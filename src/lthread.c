@@ -48,6 +48,7 @@
 #include "lthread.h"
 #include "lthread_int.h"
 #include "lthread_poller.h"
+#include "lthread_os_thread.h"
 
 extern int errno;
 
@@ -72,11 +73,100 @@ static inline struct lthread* _lthread_handle_event(
     enum lthread_event ev,
     bool is_eof
 );
+static inline struct lthread_sched* _lthread_sched_create(size_t stack_size);
+static inline void* _lthread_run_sched(void* sched);
+static void _exec(intptr_t ltp);
 
 RB_GENERATE(lthread_rb_sleep, lthread, sleep_node, _lthread_sleep_cmp);
 RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
+#define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
+#define FD_EVENT(f) ((int32_t)(f))
+#define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
 
 __thread struct lthread_sched* _lthread_curent_sched;
+
+void lthread_exit()
+{
+    struct lthread *lt = lthread_current();
+    _lthread_exit(lt);
+}
+
+void lthread_print_timestamp(char *msg)
+{
+    struct timeval t1 = {0, 0};
+    gettimeofday(&t1, NULL);
+    printf("lt timestamp: sec: %ld usec: %ld (%s)\n", t1.tv_sec, (long) t1.tv_usec, msg);
+}
+
+void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size_t num_aux_threads)
+{
+    size_t num_schedulers = num_aux_threads + 1;
+    if (stack_size == 0)
+        stack_size = MAX_STACK_SIZE;
+    lthread_sched_t** schedulers = (lthread_sched_t**)calloc(num_schedulers * sizeof(lthread_sched_t*), 0);
+    for (size_t i = 0; i < num_schedulers; ++i)
+        schedulers[i] = _lthread_sched_create(stack_size);
+    if (num_aux_threads)
+    {
+        lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
+        for (size_t i = 0; i < num_schedulers; ++i)
+        {
+            last_sched->sched_neighbor = schedulers[i];
+            last_sched = schedulers[i];
+        }
+    }
+    lthread_os_thread_t* threads = (lthread_os_thread_t*)calloc(num_aux_threads * sizeof(lthread_os_thread_t), 0);
+    for (size_t i = 0; i < num_aux_threads; ++i)
+        lthread_create_os_thread(&threads[i], _lthread_run_sched, (void*)schedulers[i + 1]);
+    _lthread_curent_sched = schedulers[0];
+    lthread_spawn(main_func, main_arg);
+    _lthread_run_sched(schedulers[0]);
+}
+
+int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
+{
+    struct lthread *lt = NULL;
+    struct lthread_sched *sched = _lthread_get_sched();
+    if (sched == NULL)
+        return -1;
+    int err = _lthread_allocate(&lt, sched);
+    if (err != 0)
+        return err;
+    lt->fun = fun;
+    lt->fd_wait = -1;
+    lt->arg = arg;
+    lt->ctx = make_fcontext(lt->stack + lt->stack_size, lt->stack_size, &_exec);
+    _lthread_push_ready(lt);
+    *new_lt = lt;
+    return 0;
+}
+
+lthread_t* lthread_spawn(lthread_func func, void* arg)
+{
+    lthread_t* result;
+    int res = lthread_create(&result, func, arg);
+    if (res != 0)
+        return NULL;
+    return result;
+}
+
+struct lthread* lthread_current()
+{
+    return (_lthread_get_sched()->current_lthread);
+}
+
+void lthread_yield()
+{
+    struct lthread *lt = lthread_current();
+    _lthread_push_ready(lt);
+    _lthread_yield(lt);
+}
+
+void lthread_sleep(uint64_t msecs)
+{
+    struct lthread *lt = lthread_current();
+    _lthread_sched_sleep(lt, msecs);
+}
 
 int _switch(cpu_ctx_t *new_ctx, cpu_ctx_t *cur_ctx)
 {
@@ -134,11 +224,6 @@ static inline void _lthread_madvise(struct lthread *lt)
     }
 }
 
-int lthread_init(size_t size)
-{
-    return _lthread_sched_create(size);
-}
-
 void _lthread_sched_free()
 {
     if (_lthread_curent_sched)
@@ -152,89 +237,28 @@ void _lthread_sched_free()
     }
 }
 
-int _lthread_sched_create(size_t stack_size)
+struct lthread_sched* _lthread_sched_create(size_t stack_size)
 {
     struct lthread_sched *new_sched;
-    size_t sched_stack_size = 0;
-
-    sched_stack_size = stack_size ? stack_size : MAX_STACK_SIZE;
-
     if ((new_sched = calloc(1, sizeof(struct lthread_sched))) == NULL) {
         perror("Failed to initialize scheduler\n");
-        return (errno);
+        return 0;
     }
-
-    _lthread_curent_sched = new_sched;
-
     if ((new_sched->poller_fd = _lthread_poller_create()) == -1) {
         perror("Failed to initialize poller\n");
         _lthread_sched_free();
-        return (errno);
+        return 0;
     }
-    _lthread_poller_ev_register_trigger();
-
-    new_sched->stack_size = sched_stack_size;
+    _lthread_poller_ev_register_trigger(new_sched);
     new_sched->page_size = getpagesize();
-
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
     RB_INIT(&new_sched->waiting);
     TAILQ_INIT(&new_sched->ready);
     new_sched->mutex = lthread_mutex_create();
+    new_sched->stack_size = stack_size;
     bzero(&new_sched->ctx, sizeof(cpu_ctx_t));
-
-    return (0);
-}
-
-int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
-{
-    struct lthread *lt = NULL;
-    struct lthread_sched *sched = _lthread_get_sched();
-    if (sched == NULL) {
-        _lthread_sched_create(0);
-        sched = _lthread_get_sched();
-        if (sched == NULL) {
-            perror("Failed to create scheduler");
-            return (-1);
-        }
-    }
-    int err = _lthread_allocate(&lt, sched);
-    if (err != 0)
-        return err;
-    lt->fun = fun;
-    lt->fd_wait = -1;
-    lt->arg = arg;
-    lt->ctx = make_fcontext(lt->stack + lt->stack_size, lt->stack_size, &_exec);
-    _lthread_push_ready(lt);
-    *new_lt = lt;
-    return 0;
-}
-
-lthread_t* lthread_spawn(lthread_func func, void* arg)
-{
-    lthread_t* result;
-    int res = lthread_create(&result, func, arg);
-    if (res != 0)
-        return NULL;
-    return result;
-}
-
-struct lthread* lthread_current()
-{
-    return (_lthread_get_sched()->current_lthread);
-}
-
-void lthread_yield()
-{
-    struct lthread *lt = lthread_current();
-    _lthread_push_ready(lt);
-    _lthread_yield(lt);
-}
-
-void lthread_sleep(uint64_t msecs)
-{
-    struct lthread *lt = lthread_current();
-    _lthread_sched_sleep(lt, msecs);
+    return new_sched;
 }
 
 void _lthread_renice(struct lthread *lt)
@@ -254,23 +278,6 @@ void _lthread_wakeup(struct lthread *lt)
         _lthread_push_ready(lt);
     }
 }
-
-void lthread_exit()
-{
-    struct lthread *lt = lthread_current();
-    _lthread_exit(lt);
-}
-
-void lthread_print_timestamp(char *msg)
-{
-	struct timeval t1 = {0, 0};
-    gettimeofday(&t1, NULL);
-	printf("lt timestamp: sec: %ld usec: %ld (%s)\n", t1.tv_sec, (long) t1.tv_usec, msg);
-}
-
-#define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
-#define FD_EVENT(f) ((int32_t)(f))
-#define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
 
 static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
 {
@@ -371,12 +378,12 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     }
 }
 
-void lthread_run(void)
+static inline void* _lthread_run_sched(void* schedp)
 {
-    struct lthread_sched *sched = _lthread_get_sched();
-    if (sched == NULL)
-        return;
-    while (!_lthread_sched_isdone(sched)) {
+    lthread_sched_t* sched = (lthread_sched_t*)schedp;
+    _lthread_curent_sched = sched;
+    while (!_lthread_sched_isdone(sched))
+    {
         do
             _lthread_schedule_expired(sched);
         while (_lthread_resume_ready(sched));
@@ -395,7 +402,7 @@ void lthread_run(void)
         }
     }
     _lthread_sched_free();
-    return;
+    return 0;
 }
 
 static inline void _lthread_handle_events(struct lthread_sched *sched, size_t num_events)
@@ -406,7 +413,7 @@ static inline void _lthread_handle_events(struct lthread_sched *sched, size_t nu
     {
         fd = _lthread_poller_ev_get_fd(&sched->eventlist[i]);
         if (fd == sched->eventfd) {
-            _lthread_poller_ev_clear_trigger();
+            _lthread_poller_ev_clear_trigger(sched);
             continue;
         }
         is_eof = _lthread_poller_ev_is_eof(&sched->eventlist[i]);
@@ -443,10 +450,10 @@ static inline struct lthread* _lthread_handle_event(
 void _lthread_cancel_event(struct lthread *lt)
 {
     if (lt->state & BIT(LT_ST_WAIT_READ)) {
-        _lthread_poller_ev_clear_rd(FD_ONLY(lt->fd_wait));
+        _lthread_poller_ev_clear_rd(lt->sched, FD_ONLY(lt->fd_wait));
         lt->state &= CLEARBIT(LT_ST_WAIT_READ);
     } else if (lt->state & BIT(LT_ST_WAIT_WRITE)) {
-        _lthread_poller_ev_clear_wr(FD_ONLY(lt->fd_wait));
+        _lthread_poller_ev_clear_wr(lt->sched, FD_ONLY(lt->fd_wait));
         lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
     }
     if (lt->fd_wait >= 0)
@@ -500,10 +507,10 @@ void _lthread_sched_event(
 
     if (e == LT_EV_READ) {
         st = LT_ST_WAIT_READ;
-        _lthread_poller_ev_register_rd(fd);
+        _lthread_poller_ev_register_rd(lt->sched, fd);
     } else if (e == LT_EV_WRITE) {
         st = LT_ST_WAIT_WRITE;
-        _lthread_poller_ev_register_wr(fd);
+        _lthread_poller_ev_register_wr(lt->sched, fd);
     } else {
         assert(0);
     }
@@ -667,6 +674,8 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
     }
     if (result && sched->sched_neighbor)
         _lthread_sched_wake(sched->sched_neighbor);
+    if (result)
+        result->sched = _lthread_curent_sched;
     return result;
 }
 
@@ -698,4 +707,3 @@ static inline struct lthread* _lthread_sched_pop_ready(
         TAILQ_REMOVE(&sched->ready, result, ready_next);
     return result;
 }
-

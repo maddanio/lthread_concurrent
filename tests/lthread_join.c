@@ -28,7 +28,6 @@ a(void *x)
 int
 main(int argc, char **argv)
 {
-	lthread_spawn(a, NULL);
-	lthread_run();
+	lthread_run(a, 0, 0, 0);
 	return 0;
 }

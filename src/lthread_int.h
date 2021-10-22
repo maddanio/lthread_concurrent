@@ -133,7 +133,6 @@ struct lthread_sched {
 };
 
 
-int _lthread_sched_create(size_t stack_size);
 void _lthread_wakeup(struct lthread *lt);
 int _lthread_resume(struct lthread *lt);
 void _lthread_renice(struct lthread *lt);

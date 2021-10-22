@@ -46,17 +46,15 @@ enum lthread_event {
     LT_EV_WRITE
 };
 
-int _lthread_poller_create(void);
+int _lthread_poller_create();
 int _lthread_poller_poll(struct lthread_sched* sched, struct timespec t);
-void _lthread_poller_ev_register_rd(int fd);
-void _lthread_poller_ev_register_wr(int fd);
-void _lthread_poller_ev_clear_wr(int fd);
-void _lthread_poller_ev_clear_rd(int fd);
-void _lthread_poller_ev_register_trigger(void);
+void _lthread_poller_ev_register_rd(struct lthread_sched*, int fd);
+void _lthread_poller_ev_register_wr(struct lthread_sched*, int fd);
+void _lthread_poller_ev_clear_wr(struct lthread_sched*, int fd);
+void _lthread_poller_ev_clear_rd(struct lthread_sched*, int fd);
+void _lthread_poller_ev_register_trigger(struct lthread_sched*);
 void _lthread_poller_ev_trigger(struct lthread_sched *sched);
-void _lthread_poller_ev_clear_trigger(void);
-void _lthread_poller_set_fd_ready(struct lthread *lt, int fd,
-    enum lthread_event, int is_eof);
+void _lthread_poller_ev_clear_trigger(struct lthread_sched*);
 
 int _lthread_poller_ev_get_event(POLL_EVENT_TYPE *ev);
 int _lthread_poller_ev_get_fd(POLL_EVENT_TYPE *ev);

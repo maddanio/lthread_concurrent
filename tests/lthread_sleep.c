@@ -25,13 +25,9 @@ a(void *x)
 }
 
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-    lthread_spawn(a, NULL);
-    //lthread_t *lt2 = NULL;
-    //lthread_create(&lt2, a, NULL);
     fprintf(stderr,"run\n");
-    lthread_run();
+    lthread_run(a, 0, 0, 0);
     return 0;
 }

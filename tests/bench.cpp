@@ -41,14 +41,13 @@ void bench_lthread()
 {
     timer_t timer{"lthread"};
     count = 0;
-    lthread_spawn([](void*){
+    lthread_run([](void*){
         for (size_t i = 0; i < n_iter; ++i)
         {
             lthread_spawn([](void*){++count;}, NULL);
             lthread_yield();
         }
-    }, NULL);
-    lthread_run();
+    }, 0, 0, 0);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
 }
@@ -103,7 +102,7 @@ private:
 void bench_lthread_generator()
 {
     timer_t timer{"lthread generator"};
-    lthread_spawn([](void*){
+    lthread_run([](void*){
         generator_t<size_t> generator{[](auto push){
             for (size_t i = 0; i < n_iter; ++i)
                 push(i);
@@ -112,13 +111,12 @@ void bench_lthread_generator()
             if (i != generator.pull())
                 std::cerr << "fail" << std::endl;
         generator.pull();
-    }, NULL);
-    lthread_run();    
+    }, 0, 0, 0);
 }
 
 int main()
 {
-    bench_thread();
+    //bench_thread();
     bench_lthread();
     bench_lthread_generator();
     return 0;
