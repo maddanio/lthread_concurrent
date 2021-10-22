@@ -33,7 +33,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <pthread.h>
+#include <stdbool.h>
 #include <time.h>
 
 #include "lthread_poller.h"
@@ -130,6 +130,11 @@ struct lthread_sched {
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
     int                 nchanges;
     int                 num_new_events;
+
+    // shutdown
+    bool                    is_main;
+    bool                    is_stopped;
+    bool                    can_exit;
 };
 
 

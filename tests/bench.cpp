@@ -111,7 +111,7 @@ void bench_lthread_generator()
             if (i != generator.pull())
                 std::cerr << "fail" << std::endl;
         generator.pull();
-    }, 0, 0, 0);
+    }, 0, 0, 2);
 }
 
 int main()

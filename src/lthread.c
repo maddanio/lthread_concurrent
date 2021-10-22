@@ -106,6 +106,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     lthread_sched_t** schedulers = (lthread_sched_t**)calloc(num_schedulers * sizeof(lthread_sched_t*), 0);
     for (size_t i = 0; i < num_schedulers; ++i)
         schedulers[i] = _lthread_sched_create(stack_size);
+    schedulers[0]->is_main = true;
     if (num_aux_threads)
     {
         lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
@@ -121,6 +122,8 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     _lthread_curent_sched = schedulers[0];
     lthread_spawn(main_func, main_arg);
     _lthread_run_sched(schedulers[0]);
+    for (size_t i = 0; i < num_schedulers; ++i)
+        _lthread_sched_free(schedulers[i]);
 }
 
 int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
@@ -224,17 +227,14 @@ static inline void _lthread_madvise(struct lthread *lt)
     }
 }
 
-void _lthread_sched_free()
+void _lthread_sched_free(lthread_sched_t* sched)
 {
-    if (_lthread_curent_sched)
-    {
-        close(_lthread_curent_sched->poller_fd);
-    #if ! (defined(__FreeBSD__) && defined(__APPLE__))
-        close(_lthread_curent_sched->eventfd);
-    #endif
-        free(_lthread_curent_sched);
-        _lthread_curent_sched = NULL;
-    }
+    close(_lthread_curent_sched->poller_fd);
+#if ! (defined(__FreeBSD__) && defined(__APPLE__))
+    close(_lthread_curent_sched->eventfd);
+#endif
+    free(_lthread_curent_sched);
+    _lthread_curent_sched = NULL;
 }
 
 struct lthread_sched* _lthread_sched_create(size_t stack_size)
@@ -246,7 +246,7 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size)
     }
     if ((new_sched->poller_fd = _lthread_poller_create()) == -1) {
         perror("Failed to initialize poller\n");
-        _lthread_sched_free();
+        _lthread_sched_free(new_sched);
         return 0;
     }
     _lthread_poller_ev_register_trigger(new_sched);
@@ -382,7 +382,7 @@ static inline void* _lthread_run_sched(void* schedp)
 {
     lthread_sched_t* sched = (lthread_sched_t*)schedp;
     _lthread_curent_sched = sched;
-    while (!_lthread_sched_isdone(sched))
+    while (sched->can_exit)
     {
         do
             _lthread_schedule_expired(sched);
@@ -401,7 +401,7 @@ static inline void* _lthread_run_sched(void* schedp)
             _lthread_handle_events(sched, num_events);
         }
     }
-    _lthread_sched_free();
+    sched->is_stopped = true;
     return 0;
 }
 
@@ -646,6 +646,7 @@ static inline void _lthread_push_ready(struct lthread* lt)
 static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
 {
     lthread_t* result = 0;
+    sched->can_exit = true;
     if (lthread_mutex_trylock(&sched->mutex))
     {
         result = _lthread_sched_pop_ready(sched);
@@ -662,14 +663,30 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
             if (lthread_mutex_trylock(&i->mutex))
             {
                 result = _lthread_sched_pop_ready(i);
+                if (sched->is_main)
+                {
+                    if (!i->is_stopped)
+                        sched->can_exit = false;
+                }
+                else
+                {
+                     if (!_lthread_sched_isdone(i))
+                        sched->can_exit = false;
+                }
                 lthread_mutex_unlock(&i->mutex);
-            }            
+            }
+            else
+            {
+                sched->can_exit = false; // we don't know so...
+            }
         }
     }
     if (!result)
     {
         lthread_mutex_lock(&sched->mutex);
         result = _lthread_sched_pop_ready(sched);
+        if (result || !_lthread_sched_isdone(sched))
+            sched->can_exit = false;
         lthread_mutex_unlock(&sched->mutex);
     }
     if (result && sched->sched_neighbor)
