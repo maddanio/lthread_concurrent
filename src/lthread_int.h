@@ -102,6 +102,12 @@ typedef enum {
     LTHREAD_SCHED_IS_BLOCKING,
 } lthread_sched_block_state_t;
 
+typedef struct lthread_pool_state {
+    size_t num_asleep;
+    size_t num_schedulers;
+    lthread_mutex_t     mutex;
+} lthread_pool_state_t;
+
 struct lthread_sched {
     // local
     cpu_ctx_t           ctx;
@@ -110,14 +116,6 @@ struct lthread_sched {
     uint64_t            default_timeout;
     struct lthread*     current_lthread;
     lthread_sched_t*    next_sched;
-
-    // shared
-    lthread_sched_t*    sched_neighbor;
-    lthread_sched_block_state_t block_state;
-    lthread_mutex_t     mutex;
-    struct lthread_q    ready;
-    struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
-    size_t              lthread_cache_size;
 
     // poller stuff
     lthread_rb_sleep_t  sleeping;
@@ -131,10 +129,14 @@ struct lthread_sched {
     int                 nchanges;
     int                 num_new_events;
 
-    // shutdown
-    bool                    is_main;
-    bool                    is_stopped;
-    bool                    can_exit;
+    // pool stuff
+    lthread_pool_state_t*pool_state;
+    lthread_sched_t*    sched_neighbor;
+    lthread_sched_block_state_t block_state;
+    lthread_mutex_t     mutex;
+    struct lthread_q    ready;
+    struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
+    size_t              lthread_cache_size;
 };
 
 
