@@ -113,6 +113,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     {
         lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
         lthread_pool_state_t* pool_state = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
+        pool_state->num_schedulers = num_schedulers;
         pool_state->mutex = lthread_mutex_create();
         for (size_t i = 0; i < num_schedulers; ++i)
         {
@@ -333,6 +334,7 @@ static size_t _lthread_poll(struct lthread_sched* sched)
     {
         usecs = 0;
     }
+    fprintf(stderr, "polling sched %p for %lluus\n", sched, usecs);
     do
         ret = _lthread_poller_poll(sched, t);
     while(ret == -1 && errno == EINTR);
@@ -386,11 +388,14 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     struct lthread *lt = NULL;
     if ((lt = _lthread_pop_ready(sched)))
     {
+        fprintf(stderr, "sched %p found work\n", sched);
         _lthread_resume(lt);
+        fprintf(stderr, "sched %p did work\n", sched);
         return true;
     }
     else
     {
+        fprintf(stderr, "sched %p found no work\n", sched);
         return false;        
     }
 }
@@ -420,25 +425,28 @@ static inline void* _lthread_run_sched(void* schedp)
             {
                 if (sched->pool_state)
                 {
-                    lthread_mutex_lock(&sched->mutex);
+                    lthread_mutex_lock(&sched->pool_state->mutex);
                     all_done = ++sched->pool_state->num_asleep == sched->pool_state->num_schedulers;
-                    lthread_mutex_unlock(&sched->mutex);
+                    fprintf(stderr, "%zu/%zu schedulers asleep now\n", sched->pool_state->num_asleep, sched->pool_state->num_schedulers);
+                    lthread_mutex_unlock(&sched->pool_state->mutex);
                 }
                 else
                 {
+                    fprintf(stderr, "sched %p found all done\n", sched);
                     all_done = true;
                 }
             }
             lthread_mutex_unlock(&sched->mutex);
             if (!all_done)
             {
+                fprintf(stderr, "sched %p polling deep: %u\n", sched, deep_sleep);
                 size_t num_events = _lthread_poll(sched);
                 _lthread_handle_events(sched, num_events);
                 if (deep_sleep && sched->pool_state)
                 {
-                    lthread_mutex_lock(&sched->mutex);
+                    lthread_mutex_lock(&sched->pool_state->mutex);
                     --sched->pool_state->num_asleep;
-                    lthread_mutex_unlock(&sched->mutex);
+                    lthread_mutex_unlock(&sched->pool_state->mutex);
                 }
             }
         }
@@ -725,6 +733,7 @@ static inline void _lthread_sched_wake(
     struct lthread_sched *sched
 )
 {
+    fprintf(stderr, "waking up sched %p\n", sched);
     lthread_mutex_lock(&sched->mutex);
     switch(sched->block_state)
     {

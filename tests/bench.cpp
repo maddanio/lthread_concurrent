@@ -78,6 +78,8 @@ public:
     {
         lthread_cond_wait(_consume_cond, 0);
         lthread_cond_signal(_produce_cond);
+        if (_value)
+            std::cerr << "pull " << *_value << std::endl;
         return std::move(_value);
     }
     ~generator_t()
@@ -88,6 +90,8 @@ public:
 private:
     void push(std::optional<value_t> value)
     {
+        if (value)
+            std::cerr << "push " << *value << std::endl;
         _value = std::move(value);
         lthread_cond_signal(_consume_cond);
         if (_value)
