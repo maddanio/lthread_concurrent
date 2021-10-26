@@ -42,7 +42,6 @@
 #include "tree.h"
 #include "libcontext.h"
 
-#define LT_MAX_EVENTS    (1024)
 #define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
 
@@ -120,14 +119,8 @@ struct lthread_sched {
     // poller stuff
     lthread_rb_sleep_t  sleeping;
     lthread_rb_wait_t   waiting;
-    int                 poller_fd;
-#if defined(__FreeBSD__) || defined(__APPLE__)
-    struct kevent       changelist[LT_MAX_EVENTS];
-#endif
-    int                 eventfd;
-    POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
-    int                 nchanges;
-    int                 num_new_events;
+
+    lthread_poller_t    poller;
 
     // pool stuff
     lthread_pool_state_t*pool_state;

@@ -34,3 +34,28 @@
 #endif
 
 #include "lthread_int.h"
+
+size_t lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs)
+{
+    int ret = 0;
+    poller->num_new_events = 0;
+    struct timespec t = {0, 0};
+    if (usecs)
+    {
+        t.tv_sec =  usecs / 1000000u;
+        if (t.tv_sec != 0)
+            t.tv_nsec  =  (usecs % 1000u)  * 1000000u;
+        else
+            t.tv_nsec = usecs * 1000u;
+    }
+    do
+        ret = _lthread_poller_poll(poller, t);
+    while(ret == -1 && errno == EINTR);
+    if (ret < 0)
+    {
+        perror("error adding events to epoll/kqueue");
+        assert(0);
+        ret = 0;
+    }
+    return ret;
+}
