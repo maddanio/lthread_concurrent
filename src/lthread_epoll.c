@@ -39,9 +39,9 @@ _lthread_poller_create(void)
 }
 
 inline int
-_lthread_poller_poll(struct lthread_sched* sched, struct timespec t)
+_lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
 {
-    return (epoll_wait(sched->poller_fd, sched->eventlist, LT_MAX_EVENTS,
+    return (epoll_wait(poller->poller_fd, poller->eventlist, LT_MAX_EVENTS,
         t.tv_sec*1000.0 + t.tv_nsec/1000000.0));
 }
 
@@ -54,7 +54,7 @@ _lthread_poller_ev_clear_rd(int fd)
 
     ev.data.fd = fd;
     ev.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
-    ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_DEL, fd, &ev);
+    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_DEL, fd, &ev);
     assert(ret != -1);
 }
 
@@ -67,7 +67,7 @@ _lthread_poller_ev_clear_wr(int fd)
 
     ev.data.fd = fd;
     ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
-    ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_DEL, fd, &ev);
+    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_DEL, fd, &ev);
     assert(ret != -1);
 }
 
@@ -80,9 +80,9 @@ _lthread_poller_ev_register_rd(int fd)
 
     ev.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
     ev.data.fd = fd;
-    ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_MOD, fd, &ev);
+    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_MOD, fd, &ev);
     if (ret < 0)
-        ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_ADD, fd, &ev);
+        ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_ADD, fd, &ev);
     assert(ret != -1);
 }
 
@@ -95,9 +95,9 @@ _lthread_poller_ev_register_wr(int fd)
 
     ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
     ev.data.fd = fd;
-    ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_MOD, fd, &ev);
+    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_MOD, fd, &ev);
     if (ret < 0)
-        ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_ADD, fd, &ev);
+        ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_ADD, fd, &ev);
     assert(ret != -1);
 }
 
@@ -138,13 +138,13 @@ _lthread_poller_ev_register_trigger(void)
     int ret = 0;
     struct epoll_event ev;
 
-    if (!sched->eventfd) {
-        sched->eventfd = eventfd(0, EFD_NONBLOCK);
-        assert(sched->eventfd != -1);
+    if (!poller->eventfd) {
+        poller->eventfd = eventfd(0, EFD_NONBLOCK);
+        assert(poller->eventfd != -1);
     }
     ev.events = EPOLLIN;
-    ev.data.fd = sched->eventfd;
-    ret = epoll_ctl(sched->poller_fd, EPOLL_CTL_ADD, sched->eventfd, &ev);
+    ev.data.fd = poller->eventfd;
+    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_ADD, poller->eventfd, &ev);
     assert(ret != -1);
 }
 
@@ -153,12 +153,12 @@ _lthread_poller_ev_clear_trigger(void)
 {
     uint64_t tmp;
     struct lthread_sched *sched = _lthread_get_sched();
-    assert(read(sched->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));
+    assert(read(poller->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));
 }
 
 inline void
 _lthread_poller_ev_trigger(struct lthread_sched *sched)
 {
     uint64_t tmp = 2;
-    assert(write(sched->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));
+    assert(write(poller->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));
 }
