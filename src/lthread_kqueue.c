@@ -144,7 +144,7 @@ void lthread_poller_ev_register_trigger(lthread_poller_t* poller)
         -1,
         EVFILT_USER,
         EV_ADD,
-        0,
+        NOTE_FFCOPY,
         0,
         0
     );
@@ -160,8 +160,8 @@ void lthread_poller_ev_trigger(lthread_poller_t* poller)
         &change,
         -1,
         EVFILT_USER,
-        0,
-        NOTE_TRIGGER,
+        EV_ENABLE,
+        NOTE_FFCOPY|NOTE_TRIGGER|0x1,
         0,
         0
     );
@@ -176,7 +176,7 @@ void lthread_poller_ev_clear_trigger(lthread_poller_t* poller)
         &change,
         -1,
         EVFILT_USER,
-        0,
+        EV_DISABLE,
         EV_CLEAR,
         0,
         0

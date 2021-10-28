@@ -39,13 +39,24 @@ void* trigger_thread_fun(void* arg)
 
 void test_trigger()
 {
+    size_t num_events;
     lthread_poller_t poller = {0};
     my_assert(lthread_poller_init(&poller) == 0, "initiating poller");
     lthread_os_thread_t thread;
     lthread_create_os_thread(&thread, trigger_thread_fun, &poller);
     uint64_t before = _lthread_usec_now();
-    lthread_poller_poll(&poller, 2000000);
+    num_events = lthread_poller_poll(&poller, 2000000);
     uint64_t after = _lthread_usec_now();
+    fprintf(stderr, "poller slept %lluus\n", after - before);
+    for (size_t i = 0; i < num_events; ++i)
+    {
+        if (lthread_poller_ev_get_fd(&poller.eventlist[i]) == poller.eventfd)
+            lthread_poller_ev_clear_trigger(&poller);
+    }
+    lthread_create_os_thread(&thread, trigger_thread_fun, &poller);
+    before = _lthread_usec_now();
+    num_events = lthread_poller_poll(&poller, 2000000);
+    after = _lthread_usec_now();
     fprintf(stderr, "poller slept %lluus\n", after - before);
     lthread_poller_close(&poller);
 }
