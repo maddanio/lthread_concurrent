@@ -41,7 +41,7 @@ int lthread_poller_init(lthread_poller_t* poller)
 {
     if ((poller->poller_fd = _lthread_poller_create()) == -1)
         return -1;
-    _lthread_poller_ev_register_trigger(poller);
+    lthread_poller_ev_register_trigger(poller);
     return 0;
 }
 

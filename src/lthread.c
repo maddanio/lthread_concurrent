@@ -426,12 +426,12 @@ static inline void _lthread_handle_events(struct lthread_sched *sched, size_t nu
     int is_eof = 0;
     for (size_t i = 0; i < num_events; ++i)
     {
-        fd = _lthread_poller_ev_get_fd(&sched->poller.eventlist[i]);
+        fd = lthread_poller_ev_get_fd(&sched->poller.eventlist[i]);
         if (fd == sched->poller.eventfd) {
-            _lthread_poller_ev_clear_trigger(&sched->poller);
+            lthread_poller_ev_clear_trigger(&sched->poller);
             continue;
         }
-        is_eof = _lthread_poller_ev_is_eof(&sched->poller.eventlist[i]);
+        is_eof = lthread_poller_ev_is_eof(&sched->poller.eventlist[i]);
         if (is_eof)
             errno = ECONNRESET;
         struct lthread* lt_read = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
@@ -465,10 +465,10 @@ static inline struct lthread* _lthread_handle_event(
 void _lthread_cancel_event(struct lthread *lt)
 {
     if (lt->state & BIT(LT_ST_WAIT_READ)) {
-        _lthread_poller_ev_clear_rd(&lt->sched->poller, FD_ONLY(lt->fd_wait));
+        lthread_poller_ev_clear_rd(&lt->sched->poller, FD_ONLY(lt->fd_wait));
         lt->state &= CLEARBIT(LT_ST_WAIT_READ);
     } else if (lt->state & BIT(LT_ST_WAIT_WRITE)) {
-        _lthread_poller_ev_clear_wr(&lt->sched->poller, FD_ONLY(lt->fd_wait));
+        lthread_poller_ev_clear_wr(&lt->sched->poller, FD_ONLY(lt->fd_wait));
         lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
     }
     if (lt->fd_wait >= 0)
@@ -522,10 +522,10 @@ void _lthread_sched_event(
 
     if (e == LT_EV_READ) {
         st = LT_ST_WAIT_READ;
-        _lthread_poller_ev_register_rd(&lt->sched->poller, fd);
+        lthread_poller_ev_register_rd(&lt->sched->poller, fd);
     } else if (e == LT_EV_WRITE) {
         st = LT_ST_WAIT_WRITE;
-        _lthread_poller_ev_register_wr(&lt->sched->poller, fd);
+        lthread_poller_ev_register_wr(&lt->sched->poller, fd);
     } else {
         assert(0);
     }
@@ -708,7 +708,7 @@ static inline void _lthread_sched_wake(
         case LTHREAD_SCHED_WONT_BLOCK:
             break;
         case LTHREAD_SCHED_IS_BLOCKING:
-            _lthread_poller_ev_trigger(&sched->poller);
+            lthread_poller_ev_trigger(&sched->poller);
             break;
     }
     lthread_mutex_unlock(&sched->mutex);

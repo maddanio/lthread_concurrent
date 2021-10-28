@@ -63,20 +63,21 @@ size_t lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs);
 int lthread_poller_init(lthread_poller_t* poller);
 void lthread_poller_close(lthread_poller_t* poller);
 
+void lthread_poller_ev_register_rd(lthread_poller_t*, int fd);
+void lthread_poller_ev_register_wr(lthread_poller_t*, int fd);
+void lthread_poller_ev_clear_wr(lthread_poller_t*, int fd);
+void lthread_poller_ev_clear_rd(lthread_poller_t*, int fd);
+void lthread_poller_ev_register_trigger(lthread_poller_t*);
+void lthread_poller_ev_trigger(lthread_poller_t* poller);
+void lthread_poller_ev_clear_trigger(lthread_poller_t*);
+
+int lthread_poller_ev_get_event(POLL_EVENT_TYPE *ev);
+int lthread_poller_ev_get_fd(POLL_EVENT_TYPE *ev);
+int lthread_poller_ev_is_eof(POLL_EVENT_TYPE *ev);
+int lthread_poller_ev_is_read(POLL_EVENT_TYPE *ev);
+int lthread_poller_ev_is_write(POLL_EVENT_TYPE *ev);
+
 int _lthread_poller_create();
 int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t);
-void _lthread_poller_ev_register_rd(lthread_poller_t*, int fd);
-void _lthread_poller_ev_register_wr(lthread_poller_t*, int fd);
-void _lthread_poller_ev_clear_wr(lthread_poller_t*, int fd);
-void _lthread_poller_ev_clear_rd(lthread_poller_t*, int fd);
-void _lthread_poller_ev_register_trigger(lthread_poller_t*);
-void _lthread_poller_ev_trigger(lthread_poller_t* poller);
-void _lthread_poller_ev_clear_trigger(lthread_poller_t*);
-
-int _lthread_poller_ev_get_event(POLL_EVENT_TYPE *ev);
-int _lthread_poller_ev_get_fd(POLL_EVENT_TYPE *ev);
-int _lthread_poller_ev_is_eof(POLL_EVENT_TYPE *ev);
-int _lthread_poller_ev_is_read(POLL_EVENT_TYPE *ev);
-int _lthread_poller_ev_is_write(POLL_EVENT_TYPE *ev);
 
 #endif

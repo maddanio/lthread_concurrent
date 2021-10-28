@@ -46,7 +46,7 @@ _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
 }
 
 inline void
-_lthread_poller_ev_clear_rd(int fd)
+lthread_poller_ev_clear_rd(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
@@ -59,7 +59,7 @@ _lthread_poller_ev_clear_rd(int fd)
 }
 
 inline void
-_lthread_poller_ev_clear_wr(int fd)
+lthread_poller_ev_clear_wr(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
@@ -72,7 +72,7 @@ _lthread_poller_ev_clear_wr(int fd)
 }
 
 inline void
-_lthread_poller_ev_register_rd(int fd)
+lthread_poller_ev_register_rd(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
@@ -87,7 +87,7 @@ _lthread_poller_ev_register_rd(int fd)
 }
 
 inline void
-_lthread_poller_ev_register_wr(int fd)
+lthread_poller_ev_register_wr(int fd)
 {
     struct epoll_event ev;
     int ret = 0;
@@ -102,37 +102,37 @@ _lthread_poller_ev_register_wr(int fd)
 }
 
 inline int
-_lthread_poller_ev_get_fd(struct epoll_event *ev)
+lthread_poller_ev_get_fd(struct epoll_event *ev)
 {
     return (ev->data.fd);
 }
 
 inline int
-_lthread_poller_ev_get_event(struct epoll_event *ev)
+lthread_poller_ev_get_event(struct epoll_event *ev)
 {
     return (ev->events);
 }
 
 inline int
-_lthread_poller_ev_is_eof(struct epoll_event *ev)
+lthread_poller_ev_is_eof(struct epoll_event *ev)
 {
     return (ev->events & EPOLLHUP);
 }
 
 inline int
-_lthread_poller_ev_is_write(struct epoll_event *ev)
+lthread_poller_ev_is_write(struct epoll_event *ev)
 {
     return (ev->events & EPOLLOUT);
 }
 
 inline int
-_lthread_poller_ev_is_read(struct epoll_event *ev)
+lthread_poller_ev_is_read(struct epoll_event *ev)
 {
     return (ev->events & EPOLLIN);
 }
 
 inline void
-_lthread_poller_ev_register_trigger(void)
+lthread_poller_ev_register_trigger(void)
 {
     struct lthread_sched *sched = _lthread_get_sched();
     int ret = 0;
@@ -149,7 +149,7 @@ _lthread_poller_ev_register_trigger(void)
 }
 
 inline void
-_lthread_poller_ev_clear_trigger(void)
+lthread_poller_ev_clear_trigger(void)
 {
     uint64_t tmp;
     struct lthread_sched *sched = _lthread_get_sched();
@@ -157,7 +157,7 @@ _lthread_poller_ev_clear_trigger(void)
 }
 
 inline void
-_lthread_poller_ev_trigger(struct lthread_sched *sched)
+lthread_poller_ev_trigger(struct lthread_sched *sched)
 {
     uint64_t tmp = 2;
     assert(write(poller->eventfd, &tmp, sizeof(uint64_t)) == sizeof(uint64_t));

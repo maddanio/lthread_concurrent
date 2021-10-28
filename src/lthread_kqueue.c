@@ -38,27 +38,27 @@ int _lthread_poller_create()
     return kqueue();
 }
 
-int _lthread_poller_ev_get_fd(struct kevent *ev)
+int lthread_poller_ev_get_fd(struct kevent *ev)
 {
     return ev->ident;
 }
 
-int _lthread_poller_ev_get_event(struct kevent *ev)
+int lthread_poller_ev_get_event(struct kevent *ev)
 {
     return ev->filter;
 }
 
-int _lthread_poller_ev_is_eof(struct kevent *ev)
+int lthread_poller_ev_is_eof(struct kevent *ev)
 {
     return ev->flags & EV_EOF;
 }
 
-int _lthread_poller_ev_is_write(struct kevent *ev)
+int lthread_poller_ev_is_write(struct kevent *ev)
 {
     return ev->filter == EVFILT_WRITE;
 }
 
-int _lthread_poller_ev_is_read(struct kevent *ev)
+int lthread_poller_ev_is_read(struct kevent *ev)
 {
     return ev->filter == EVFILT_READ;
 }
@@ -76,7 +76,7 @@ int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
     poller->nchanges = 0;
 }
 
-void _lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)
+void lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)
 {
     if (poller->nchanges == LT_MAX_EVENTS)
         _lthread_poller_flush_events(poller);
@@ -91,7 +91,7 @@ void _lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)
     );
 }
 
-void _lthread_poller_ev_register_wr(lthread_poller_t* poller, int fd)
+void lthread_poller_ev_register_wr(lthread_poller_t* poller, int fd)
 {
     if (poller->nchanges == LT_MAX_EVENTS)
         _lthread_poller_flush_events(poller);
@@ -106,7 +106,7 @@ void _lthread_poller_ev_register_wr(lthread_poller_t* poller, int fd)
     );
 }
 
-void _lthread_poller_ev_clear_rd(lthread_poller_t* poller, int fd)
+void lthread_poller_ev_clear_rd(lthread_poller_t* poller, int fd)
 {
     struct kevent change;
     EV_SET(
@@ -121,7 +121,7 @@ void _lthread_poller_ev_clear_rd(lthread_poller_t* poller, int fd)
     assert(kevent(poller->poller_fd, &change, 1, 0, 0, 0) != -1);
 }
 
-void _lthread_poller_ev_clear_wr(lthread_poller_t* poller, int fd)
+void lthread_poller_ev_clear_wr(lthread_poller_t* poller, int fd)
 {
     struct kevent change;
     EV_SET(
@@ -136,7 +136,7 @@ void _lthread_poller_ev_clear_wr(lthread_poller_t* poller, int fd)
     assert(kevent(poller->poller_fd, &change, 1, 0, 0, 0) != -1);
 }
 
-void _lthread_poller_ev_register_trigger(lthread_poller_t* poller)
+void lthread_poller_ev_register_trigger(lthread_poller_t* poller)
 {
     struct kevent change;
     EV_SET(
@@ -152,7 +152,7 @@ void _lthread_poller_ev_register_trigger(lthread_poller_t* poller)
     poller->eventfd =  -1;
 }
 
-void _lthread_poller_ev_trigger(lthread_poller_t* poller)
+void lthread_poller_ev_trigger(lthread_poller_t* poller)
 {
     struct kevent change;
     struct timespec tm = {0, 0};
@@ -168,7 +168,7 @@ void _lthread_poller_ev_trigger(lthread_poller_t* poller)
     assert(kevent(poller->poller_fd, &change, 1, 0, 0, &tm) != -1);
 }
 
-void _lthread_poller_ev_clear_trigger(lthread_poller_t* poller)
+void lthread_poller_ev_clear_trigger(lthread_poller_t* poller)
 {
     struct kevent change;
     struct timespec tm = {0, 0};
