@@ -56,7 +56,7 @@ static inline void _lthread_madvise(struct lthread *lt);
 static inline void _lthread_free(struct lthread *lt);
 static inline void _lthread_push_ready(struct lthread* lt);
 static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched);
-static inline struct lthread* _lthread_sched_pop_ready(struct lthread_sched *sched);
+static inline struct lthread* _lthread_sched_pop_ready(struct lthread_sched *sched, bool block);
 static inline void _lthread_sched_wake(struct lthread_sched *sched);
 static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sched* sched);
 static inline void _lthread_exit(struct lthread *lt);
@@ -286,11 +286,15 @@ void _lthread_renice(struct lthread *lt)
 
 void _lthread_wakeup(struct lthread *lt)
 {
+    fprintf(stderr, "waking %p on %p\n", lt, lt->sched);
+    lthread_sched_t* sched = lt->sched;
+    lthread_mutex_lock(&sched->mutex);
     if (lt->state & BIT(LT_ST_SLEEPING))
     {
         _lthread_desched_sleep(lt);
-        _lthread_push_ready(lt);
+        TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
     }
+    lthread_mutex_unlock(&sched->mutex);
 }
 
 static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
@@ -638,6 +642,7 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
 {
     struct lthread *lt = NULL;
     uint64_t current_usecs = _lthread_usec_now();
+    lthread_mutex_lock(&sched->mutex);
     while ((lt = RB_MIN(lthread_rb_sleep, &sched->sleeping)) != NULL) {
         if (lt->sleep_usecs <= current_usecs) {
             _lthread_cancel_event(lt);
@@ -648,10 +653,12 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
         }
         break;
     }
+    lthread_mutex_unlock(&sched->mutex);
 }
 
 static inline void _lthread_push_ready(struct lthread* lt)
 {
+    fprintf(stderr, "pushing work to %p\n", lt->sched);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
     TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
@@ -660,12 +667,7 @@ static inline void _lthread_push_ready(struct lthread* lt)
 
 static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
 {
-    lthread_t* result = 0;
-    if (lthread_mutex_trylock(&sched->mutex))
-    {
-        result = _lthread_sched_pop_ready(sched);
-        lthread_mutex_unlock(&sched->mutex);
-    }
+    lthread_t* result = _lthread_sched_pop_ready(sched, false);
     if (sched->sched_neighbor)
     {
         for(
@@ -673,24 +675,16 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
             !result && i != sched;
             i = i->sched_neighbor
         )
-        {
-            if (lthread_mutex_trylock(&i->mutex))
-            {
-                result = _lthread_sched_pop_ready(i);
-                lthread_mutex_unlock(&i->mutex);
-            }
-        }
+            result = _lthread_sched_pop_ready(i, false);
     }
     if (!result)
-    {
-        lthread_mutex_lock(&sched->mutex);
-        result = _lthread_sched_pop_ready(sched);
-        lthread_mutex_unlock(&sched->mutex);
-    }
-    if (result && sched->sched_neighbor)
-        _lthread_sched_wake(sched->sched_neighbor);
+        result = _lthread_sched_pop_ready(sched, true);
     if (result)
-        result->sched = _lthread_curent_sched;
+    {
+        if (sched->sched_neighbor)
+            _lthread_sched_wake(sched->sched_neighbor);
+        result->sched = _lthread_curent_sched;        
+    }
     return result;
 }
 
@@ -715,11 +709,24 @@ static inline void _lthread_sched_wake(
 }
 
 static inline struct lthread* _lthread_sched_pop_ready(
-    struct lthread_sched *sched
+    struct lthread_sched *sched,
+    bool block
 )
 {
+    bool locked = false;
+    if (block)
+    {
+        lthread_mutex_lock(&sched->mutex);
+        locked = true;
+    }
+    else
+    {
+        locked = lthread_mutex_trylock(&sched->mutex);
+    }
     struct lthread *result = TAILQ_FIRST(&sched->ready);
     if (result)
         TAILQ_REMOVE(&sched->ready, result, ready_next);
+    if (locked)
+        lthread_mutex_unlock(&sched->mutex);
     return result;
 }

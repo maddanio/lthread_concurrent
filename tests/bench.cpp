@@ -1,5 +1,6 @@
 #include <thread>
 #include <iostream>
+#include <stdio.h>
 #include <optional>
 
 #include <lthread.h>
@@ -47,7 +48,7 @@ void bench_lthread()
             lthread_spawn([](void*){++count;}, NULL);
             lthread_yield();
         }
-    }, 0, 0, 0);
+    }, 0, 0, 2);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
 }
@@ -77,10 +78,11 @@ public:
     std::optional<value_t> pull()
     {
         lthread_cond_wait(_consume_cond, 0);
-        lthread_cond_signal(_produce_cond);
         if (_value)
-            std::cerr << "pull " << *_value << std::endl;
-        return std::move(_value);
+            fprintf(stderr, "pull %lu\n", *_value);
+        auto result = std::move(_value);
+        lthread_cond_signal(_produce_cond);
+        return result;
     }
     ~generator_t()
     {
@@ -91,7 +93,7 @@ private:
     void push(std::optional<value_t> value)
     {
         if (value)
-            std::cerr << "push " << *value << std::endl;
+            fprintf(stderr, "push %lu\n", *value);
         _value = std::move(value);
         lthread_cond_signal(_consume_cond);
         if (_value)
@@ -109,19 +111,28 @@ void bench_lthread_generator()
     lthread_run([](void*){
         generator_t<size_t> generator{[](auto push){
             for (size_t i = 0; i < n_iter; ++i)
-                push(i);
+                push(n_iter - i - 1);
         }};
         for (size_t i = 0; i < n_iter; ++i)
-            if (i != generator.pull())
-                std::cerr << "fail" << std::endl;
+        {
+            auto value = generator.pull();
+            auto target = n_iter - i - 1;
+            if (target != value)
+            {
+                if (value)
+                    fprintf(stderr, "fail %lu != %lu\n", target, *value);
+                else
+                    fprintf(stderr, "fail %lu != -\n", target);
+            }
+        }
         generator.pull();
-    }, 0, 0, 2);
+    }, 0, 0, 1);
 }
 
 int main()
 {
     //bench_thread();
-    //bench_lthread();
-    bench_lthread_generator();
+    bench_lthread();
+    //bench_lthread_generator();
     return 0;
 }
