@@ -81,10 +81,19 @@ int lthread_lock_unlock(struct lthread_cond *c)
     return 0;
 }
 
+void _lthread_cond_remove_blocked(lthread_t* lt)
+{
+    lthread_mutex_lock(&lt->cond->mutex);
+    TAILQ_REMOVE(&lt->cond->blocked_lthreads, lt, blocked_next);
+    lthread_mutex_unlock(&lt->cond->mutex);
+    lt->cond = 0;
+}
+
 static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, struct lthread* self, uint64_t timeout)
 {
     TAILQ_INSERT_TAIL(&c->blocked_lthreads, self, blocked_next);
     lthread_mutex_unlock(&c->mutex);
+    self->cond = c;
     lthread_sleep(timeout);
     if (self->state & BIT(LT_ST_EXPIRED))
         return (-2);

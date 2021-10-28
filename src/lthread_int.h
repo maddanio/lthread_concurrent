@@ -38,6 +38,7 @@
 
 #include "lthread_poller.h"
 #include "lthread_mutex.h"
+#include "lthread_mutex.h"
 #include "queue.h"
 #include "tree.h"
 #include "libcontext.h"
@@ -50,6 +51,7 @@
 
 struct lthread;
 struct lthread_sched;
+struct lthread_cond;
 typedef struct lthread_sched lthread_sched_t;
 
 TAILQ_HEAD(lthread_q, lthread);
@@ -87,6 +89,7 @@ struct lthread {
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
+    struct lthread_cond*    cond;
 };
 
 RB_HEAD(lthread_rb_sleep, lthread);

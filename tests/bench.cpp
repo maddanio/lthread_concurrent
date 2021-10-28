@@ -126,13 +126,13 @@ void bench_lthread_generator()
             }
         }
         generator.pull();
-    }, 0, 0, 1);
+    }, 0, 0, 2);
 }
 
 int main()
 {
     //bench_thread();
     bench_lthread();
-    //bench_lthread_generator();
+    bench_lthread_generator();
     return 0;
 }

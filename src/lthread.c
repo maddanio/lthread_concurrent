@@ -27,7 +27,6 @@
  */
 
 
-#include "lthread_mutex.h"
 #include <stddef.h>
 #define LTHREAD_MMAP_MIN (1024 * 1024)
 
@@ -47,6 +46,8 @@
 
 #include "lthread.h"
 #include "lthread_int.h"
+#include "lthread_mutex.h"
+#include "lthread_cond.h"
 #include "lthread_poller.h"
 #include "lthread_os_thread.h"
 
@@ -210,6 +211,8 @@ void _lthread_yield(struct lthread *lt)
 
 int _lthread_resume(struct lthread *lt)
 {
+    if (lt->cond)
+        _lthread_cond_remove_blocked(lt);
     lt->sched->current_lthread = lt;
     _switch(&lt->ctx, &lt->sched->ctx);
     lt->sched->current_lthread = NULL;
@@ -292,6 +295,7 @@ void _lthread_wakeup(struct lthread *lt)
     if (lt->state & BIT(LT_ST_SLEEPING))
     {
         _lthread_desched_sleep(lt);
+        lt->cond = NULL;
         TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
     }
     lthread_mutex_unlock(&sched->mutex);
@@ -603,8 +607,8 @@ static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sche
             perror("Failed to allocate stack for new lthread");
             return (errno);
         }
+        lt->stack_size = sched->stack_size;
     }
-    lt->stack_size = sched->stack_size;
     lt->sched = sched;
     *new_lt = lt;
     return 0;
@@ -614,7 +618,12 @@ static inline void _lthread_free(struct lthread *lt)
 {
     if (lt->sched->lthread_cache_size < LTHREAD_CACHE_SIZE)
     {
+        void* stack = lt->stack;
+        size_t stack_size = lt->stack_size;
         lt->sched->lthread_cache[lt->sched->lthread_cache_size++] = lt;
+        memset(lt, 0, sizeof(struct lthread));
+        lt->stack = stack;
+        lt->stack_size = stack_size;
     }
     else
     {
@@ -648,7 +657,7 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
             _lthread_cancel_event(lt);
             _lthread_desched_sleep(lt);
             lt->state |= BIT(LT_ST_EXPIRED);
-            _lthread_resume(lt);
+            _lthread_push_ready(lt);
             continue;
         }
         break;
