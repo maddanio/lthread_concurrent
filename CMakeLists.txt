@@ -35,6 +35,9 @@ target_link_libraries(lthread_join lthread pthread)
 add_executable(bench tests/bench.cpp)
 target_link_libraries(bench lthread pthread)
 
+add_executable(test_poller tests/test_poller.c)
+target_link_libraries(test_poller lthread pthread)
+
 enable_testing()
 add_test(lthread_sleep ${UNIT_TEST_PATH}/lthread_sleep)
 add_test(lthread_join ${UNIT_TEST_PATH}/lthread_join)
