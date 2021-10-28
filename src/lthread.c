@@ -246,10 +246,7 @@ static inline void _lthread_madvise(struct lthread *lt)
 void _lthread_sched_free(lthread_sched_t* sched)
 {
     fprintf(stderr, "freeing scheduler at %p\n", sched);
-    close(sched->poller.poller_fd);
-#if ! (defined(__FreeBSD__) && defined(__APPLE__))
-    close(sched->poller.eventfd);
-#endif
+    lthread_poller_close(&sched->poller);
     free(sched);
     fprintf(stderr, "freeing scheduler\n");
 }
@@ -261,13 +258,12 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size)
         perror("Failed to initialize scheduler\n");
         return 0;
     }
-    if ((new_sched->poller.poller_fd = _lthread_poller_create()) == -1) {
+    if (lthread_poller_init(&new_sched->poller) == -1) {
         perror("Failed to initialize poller\n");
         _lthread_sched_free(new_sched);
         return 0;
     }
     fprintf(stderr, "creating scheduler at %p with stack size %zu\n", new_sched, stack_size);
-    _lthread_poller_ev_register_trigger(&new_sched->poller);
     new_sched->page_size = getpagesize();
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
@@ -317,40 +313,8 @@ static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 
 static size_t _lthread_poll(struct lthread_sched* sched)
 {
-    struct timespec t = {0, 0};
-    int ret = 0;
-    uint64_t usecs = 0;
-    sched->poller.num_new_events = 0;
-    usecs = _lthread_min_timeout(sched);
-    if (usecs && !_lthread_has_ready(sched))
-    {
-        t.tv_sec =  usecs / 1000000u;
-        if (t.tv_sec != 0)
-            t.tv_nsec  =  (usecs % 1000u)  * 1000000u;
-        else
-            t.tv_nsec = usecs * 1000u;
-    }
-    else
-    {
-        usecs = 0;
-    }
-    fprintf(stderr, "polling sched %p for %lluus\n", sched, usecs);
-    do
-        ret = _lthread_poller_poll(&sched->poller, t);
-    while(ret == -1 && errno == EINTR);
-    fprintf(stderr, "polled sched %p for %lluus\n", sched, usecs);
-    if (ret < 0)
-    {
-        perror("error adding events to epoll/kqueue");
-        assert(0);
-        ret = 0;
-    }
-    return ret;
-}
-
-static inline uint64_t _sched_live_usecs(struct lthread_sched *sched)
-{
-    return _lthread_usec_now();
+    uint64_t usecs = _lthread_has_ready(sched) ? 0 : _lthread_min_timeout(sched);
+    return lthread_poller_poll(&sched->poller, usecs);
 }
 
 static uint64_t
@@ -359,7 +323,7 @@ _lthread_min_timeout(struct lthread_sched *sched)
     struct lthread *lt = NULL;
     if ((lt = RB_MIN(lthread_rb_sleep, &sched->sleeping)))
     {
-        uint64_t current_usecs = _sched_live_usecs(sched);
+        uint64_t current_usecs = _lthread_usec_now();
         if (lt->sleep_usecs > current_usecs)
             return lt->sleep_usecs - current_usecs;
         else
@@ -599,7 +563,7 @@ void _lthread_desched_sleep(struct lthread *lt)
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
 {
     uint64_t usecs = msecs * 1000u;
-    lt->sleep_usecs = _sched_live_usecs(lt->sched) + usecs;
+    lt->sleep_usecs = _lthread_usec_now() + usecs;
     if (msecs) {
         // handle colisions by increasing wakeup time
         // a min heap would probably be better
@@ -673,7 +637,7 @@ static inline void _lthread_exit(struct lthread *lt)
 static void _lthread_schedule_expired(struct lthread_sched *sched)
 {
     struct lthread *lt = NULL;
-    uint64_t current_usecs = _sched_live_usecs(sched);
+    uint64_t current_usecs = _lthread_usec_now();
     while ((lt = RB_MIN(lthread_rb_sleep, &sched->sleeping)) != NULL) {
         if (lt->sleep_usecs <= current_usecs) {
             _lthread_cancel_event(lt);

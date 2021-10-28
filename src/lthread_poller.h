@@ -60,6 +60,8 @@ typedef struct lthread_poller {
 } lthread_poller_t;
 
 size_t lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs);
+int lthread_poller_init(lthread_poller_t* poller);
+void lthread_poller_close(lthread_poller_t* poller);
 
 int _lthread_poller_create();
 int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t);

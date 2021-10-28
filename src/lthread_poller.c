@@ -35,6 +35,24 @@
 
 #include "lthread_int.h"
 
+#include <unistd.h>
+
+int lthread_poller_init(lthread_poller_t* poller)
+{
+    if ((poller->poller_fd = _lthread_poller_create()) == -1)
+        return -1;
+    _lthread_poller_ev_register_trigger(poller);
+    return 0;
+}
+
+void lthread_poller_close(lthread_poller_t* poller)
+{
+    close(poller->poller_fd);
+#if ! (defined(__FreeBSD__) && defined(__APPLE__))
+    close(poller->eventfd);
+#endif    
+}
+
 size_t lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs)
 {
     int ret = 0;
