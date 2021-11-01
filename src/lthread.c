@@ -280,7 +280,7 @@ void _lthread_wakeup(struct lthread *lt)
 {
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
-    if (lt->state & BIT(LT_ST_SLEEPING))
+    if ((lt->state & BIT(LT_ST_EXPIRED)) == 0)
     {
         _lthread_desched_sleep(lt);
         lt->cond = NULL;
@@ -665,9 +665,7 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
     if (result)
     {
         if (sched->sched_neighbor != sched)
-        {
             _lthread_sched_wake(sched->sched_neighbor);
-        }
         result->sched = _lthread_curent_sched;        
     }
     return result;
