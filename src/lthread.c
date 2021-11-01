@@ -369,7 +369,6 @@ static inline void* _lthread_run_sched(void* schedp)
             _lthread_schedule_expired(sched);
         while (_lthread_resume_ready(sched));
         lthread_mutex_lock(&sched->mutex);
-        fprintf(stderr, "%p ran out of work\n", sched);
         if (sched->block_state == LTHREAD_SCHED_WONT_BLOCK)
         {
             sched->block_state = LTHREAD_SCHED_WILL_BLOCK;
@@ -401,7 +400,6 @@ static inline void* _lthread_run_sched(void* schedp)
     }
     if (sched->sched_neighbor != sched)
         _lthread_sched_wake(sched->sched_neighbor);
-    fprintf(stderr, "%p done\n", sched);
     return 0;
 }
 
@@ -671,10 +669,6 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
             _lthread_sched_wake(sched->sched_neighbor);
         }
         result->sched = _lthread_curent_sched;        
-    }
-    else
-    {
-        fprintf(stderr, "%p found no work\n", sched);
     }
     return result;
 }

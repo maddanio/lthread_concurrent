@@ -47,7 +47,7 @@ void bench_lthread()
         for (size_t i = 0; i < n_iter; ++i)
         {
             lthread_spawn([](void*){
-                fprintf(stderr, "count %lu\n", ++count);
+                ++count;
             }, NULL);
             lthread_yield();
         }
@@ -83,8 +83,6 @@ public:
     std::optional<value_t> pull()
     {
         lthread_cond_wait(_consume_cond, 0);
-        if (_value)
-            fprintf(stderr, "pull %lu\n", *_value);
         auto result = std::move(_value);
         lthread_cond_signal(_produce_cond);
         return result;
@@ -97,8 +95,6 @@ public:
 private:
     void push(std::optional<value_t> value)
     {
-        if (value)
-            fprintf(stderr, "push %lu\n", *value);
         _value = std::move(value);
         lthread_cond_signal(_consume_cond);
         if (_value)
@@ -113,6 +109,7 @@ private:
 void bench_lthread_generator()
 {
     timer_t timer{"lthread generator"};
+    count = 0;
     lthread_run([](void*){
         generator_t<size_t> generator{[](auto push){
             for (size_t i = 0; i < n_iter; ++i)
@@ -129,15 +126,24 @@ void bench_lthread_generator()
                 else
                     fprintf(stderr, "fail %lu != -\n", target);
             }
+            else
+            {
+                ++count;
+                fprintf(stderr, "ok %lu == %lu\n", target, *value);
+            }
         }
         generator.pull();
     }, 0, 0, 2);
+    if (count != n_iter)
+        std::cerr << "fail " << count << std::endl;
+    else
+        std::cerr << "ok " << count << std::endl;
 }
 
 int main()
 {
     //bench_thread();
-    //bench_lthread();
+    bench_lthread();
     bench_lthread_generator();
     return 0;
 }
