@@ -133,6 +133,6 @@ int main()
 {
     //bench_thread();
     bench_lthread();
-    bench_lthread_generator();
+    //bench_lthread_generator();
     return 0;
 }

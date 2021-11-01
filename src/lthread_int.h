@@ -67,6 +67,7 @@ enum lthread_st {
     LT_ST_SLEEPING,     /* lthread is sleeping */
     LT_ST_EXPIRED,      /* lthread has expired and needs to run */
     LT_ST_FDEOF,        /* lthread socket has shut down */
+    LT_ST_YIELDED       /* lthread yielded explicitly */
 };
 
 struct lthread {
@@ -134,7 +135,6 @@ struct lthread_sched {
 
 
 void _lthread_wakeup(struct lthread *lt);
-int _lthread_resume(struct lthread *lt);
 void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);

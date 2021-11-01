@@ -54,6 +54,7 @@
 extern int errno;
 
 static inline void _lthread_madvise(struct lthread *lt);
+static inline void  _lthread_resume(struct lthread *lt);
 static inline void _lthread_yield();
 static inline void _lthread_free(struct lthread *lt);
 static inline void _lthread_push_ready(struct lthread* lt);
@@ -170,7 +171,7 @@ struct lthread* lthread_current()
 
 void lthread_yield()
 {
-    _lthread_push_ready(lthread_current());
+    lthread_current()->state |= BIT(LT_ST_YIELDED);   
     _lthread_yield();
 }
 
@@ -201,7 +202,7 @@ void _lthread_yield()
     _switch(&lt->sched->ctx, &lt->ctx);
 }
 
-int _lthread_resume(struct lthread *lt)
+void _lthread_resume(struct lthread *lt)
 {
     if (lt->cond)
         _lthread_cond_remove_blocked(lt);
@@ -215,11 +216,10 @@ int _lthread_resume(struct lthread *lt)
     if (lt->state & BIT(LT_ST_EXITED))
     {
         _lthread_free(lt);
-        return -1;
     }
-    else
+    else if (lt->state & BIT(LT_ST_YIELDED))
     {
-        return 0;
+        _lthread_push_ready(lt);
     }
 }
 
