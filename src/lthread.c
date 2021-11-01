@@ -363,7 +363,7 @@ static inline void* _lthread_run_sched(void* schedp)
     lthread_sched_t* sched = (lthread_sched_t*)schedp;
     _lthread_curent_sched = sched;
     bool all_done = false;
-    while (true || !all_done)
+    while (!all_done)
     {
         do
             _lthread_schedule_expired(sched);

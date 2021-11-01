@@ -2,13 +2,14 @@
 #include <iostream>
 #include <stdio.h>
 #include <optional>
+#include <atomic>
 
 #include <lthread.h>
 #include <lthread_int.h>
 #include <lthread_cond.h>
 
 static constexpr size_t n_iter = 200000;
-size_t count = 0;
+std::atomic<size_t> count = 0;
 
 class timer_t
 {
@@ -45,12 +46,16 @@ void bench_lthread()
     lthread_run([](void*){
         for (size_t i = 0; i < n_iter; ++i)
         {
-            lthread_spawn([](void*){fprintf(stderr, "count %lu\n", ++count);}, NULL);
-            //lthread_yield();
+            lthread_spawn([](void*){
+                fprintf(stderr, "count %lu\n", ++count);
+            }, NULL);
+            lthread_yield();
         }
     }, 0, 0, 1);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
+    else
+        std::cerr << "ok " << count << std::endl;
 }
 
 template<typename value_t>
@@ -132,7 +137,7 @@ void bench_lthread_generator()
 int main()
 {
     //bench_thread();
-    bench_lthread();
-    //bench_lthread_generator();
+    //bench_lthread();
+    bench_lthread_generator();
     return 0;
 }
