@@ -45,7 +45,7 @@ void bench_lthread()
     lthread_run([](void*){
         for (size_t i = 0; i < n_iter; ++i)
         {
-            lthread_spawn([](void*){++count;}, NULL);
+            lthread_spawn([](void*){fprintf(stderr, "count %lu\n", ++count);}, NULL);
             lthread_yield();
         }
     }, 0, 0, 2);

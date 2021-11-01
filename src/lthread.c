@@ -54,6 +54,7 @@
 extern int errno;
 
 static inline void _lthread_madvise(struct lthread *lt);
+static inline void _lthread_yield();
 static inline void _lthread_free(struct lthread *lt);
 static inline void _lthread_push_ready(struct lthread* lt);
 static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched);
@@ -108,18 +109,14 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     for (size_t i = 0; i < num_schedulers; ++i)
     {
         schedulers[i] = _lthread_sched_create(stack_size);
-        fprintf(stderr, "schedulers[%zu]=%p\n", i, schedulers[i]);
     }
     if (num_aux_threads)
     {
         lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
-        lthread_pool_state_t* pool_state = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
-        pool_state->num_schedulers = num_schedulers;
-        pool_state->mutex = lthread_mutex_create();
         for (size_t i = 0; i < num_schedulers; ++i)
         {
-            fprintf(stderr, "schedulers[%zu]=%p\n", i, schedulers[i]);
-            schedulers[i]->pool_state = pool_state;
+            schedulers[i]->pool_state.num_schedulers = num_schedulers;
+            schedulers[i]->pool_state.num_asleep = 0;
             last_sched->sched_neighbor = schedulers[i];
             last_sched = schedulers[i];
         }
@@ -133,12 +130,6 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
             lthread_create_os_thread(&threads[i], _lthread_run_sched, (void*)schedulers[i + 1]);        
     }
     _lthread_run_sched(schedulers[0]);
-    if (schedulers[0]->pool_state)
-    {
-        lthread_pool_state_t* pool_state = schedulers[0]->pool_state;
-        lthread_mutex_destroy(&pool_state->mutex);
-        free(pool_state);
-    }
     for (size_t i = 0; i < num_schedulers; ++i)
         _lthread_sched_free(schedulers[i]);
 }
@@ -172,14 +163,15 @@ lthread_t* lthread_spawn(lthread_func func, void* arg)
 
 struct lthread* lthread_current()
 {
-    return (_lthread_get_sched()->current_lthread);
+    struct lthread_sched* sched = _lthread_get_sched(); 
+    assert(sched->current_lthread != 0);
+    return sched->current_lthread;
 }
 
 void lthread_yield()
 {
-    struct lthread *lt = lthread_current();
-    _lthread_push_ready(lt);
-    _lthread_yield(lt);
+    _lthread_push_ready(lthread_current());
+    _lthread_yield();
 }
 
 void lthread_sleep(uint64_t msecs)
@@ -201,9 +193,9 @@ static void _exec(intptr_t ltp)
     _lthread_exit(lt);
 }
 
-void _lthread_yield(struct lthread *lt)
+void _lthread_yield()
 {
-    assert(lt == lthread_current());
+    struct lthread* lt = lthread_current();
     lt->sp = __builtin_frame_address(0);
     lt->ops = 0;
     _switch(&lt->sched->ctx, &lt->ctx);
@@ -213,9 +205,11 @@ int _lthread_resume(struct lthread *lt)
 {
     if (lt->cond)
         _lthread_cond_remove_blocked(lt);
-    lt->sched->current_lthread = lt;
-    _switch(&lt->ctx, &lt->sched->ctx);
-    lt->sched->current_lthread = NULL;
+    _lthread_curent_sched->current_lthread = lt;
+    fprintf(stderr, "resuming lthread %p on sched %p\n", lt, _lthread_curent_sched);
+    _switch(&lt->ctx, &_lthread_curent_sched->ctx);
+    fprintf(stderr, "yielded lthread %p on sched %p\n", lt, _lthread_curent_sched);
+    _lthread_curent_sched->current_lthread = NULL;
     _lthread_madvise(lt);
     lt->state &= CLEARBIT(LT_ST_EXPIRED);
     if (lt->state & BIT(LT_ST_EXITED))
@@ -248,10 +242,8 @@ static inline void _lthread_madvise(struct lthread *lt)
 
 void _lthread_sched_free(lthread_sched_t* sched)
 {
-    fprintf(stderr, "freeing scheduler at %p\n", sched);
     lthread_poller_close(&sched->poller);
     free(sched);
-    fprintf(stderr, "freeing scheduler\n");
 }
 
 struct lthread_sched* _lthread_sched_create(size_t stack_size)
@@ -266,7 +258,6 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size)
         _lthread_sched_free(new_sched);
         return 0;
     }
-    fprintf(stderr, "creating scheduler at %p with stack size %zu\n", new_sched, stack_size);
     new_sched->page_size = getpagesize();
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
@@ -281,15 +272,11 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size)
 void _lthread_renice(struct lthread *lt)
 {
     if (++(lt->ops) >= 5)
-    {
-        _lthread_push_ready(lt);
-        _lthread_yield(lt);
-    }
+        lthread_yield();
 }
 
 void _lthread_wakeup(struct lthread *lt)
 {
-    fprintf(stderr, "waking %p on %p\n", lt, lt->sched);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
     if (lt->state & BIT(LT_ST_SLEEPING))
@@ -361,14 +348,11 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     struct lthread *lt = NULL;
     if ((lt = _lthread_pop_ready(sched)))
     {
-        fprintf(stderr, "sched %p found work\n", sched);
         _lthread_resume(lt);
-        fprintf(stderr, "sched %p did work\n", sched);
         return true;
     }
     else
     {
-        fprintf(stderr, "sched %p found no work\n", sched);
         return false;        
     }
 }
@@ -376,11 +360,11 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
 static inline void* _lthread_run_sched(void* schedp)
 {
     lthread_sched_t* sched = (lthread_sched_t*)schedp;
-    fprintf(stderr, "sched %p run\n", sched);
     _lthread_curent_sched = sched;
     bool all_done = false;
     while (!all_done)
     {
+        _lthread_resume_ready(sched);continue;
         do
             _lthread_schedule_expired(sched);
         while (_lthread_resume_ready(sched));
@@ -396,35 +380,22 @@ static inline void* _lthread_run_sched(void* schedp)
             bool deep_sleep = _lthread_sched_isdone(sched);
             if (deep_sleep)
             {
-                if (sched->pool_state)
-                {
-                    lthread_mutex_lock(&sched->pool_state->mutex);
-                    all_done = ++sched->pool_state->num_asleep == sched->pool_state->num_schedulers;
-                    fprintf(stderr, "%zu/%zu schedulers asleep now\n", sched->pool_state->num_asleep, sched->pool_state->num_schedulers);
-                    lthread_mutex_unlock(&sched->pool_state->mutex);
-                }
-                else
-                {
-                    fprintf(stderr, "sched %p found all done\n", sched);
-                    all_done = true;
-                }
+                all_done = ++sched->pool_state.num_asleep == sched->pool_state.num_schedulers;
             }
             lthread_mutex_unlock(&sched->mutex);
             if (!all_done)
             {
-                fprintf(stderr, "sched %p polling deep: %u\n", sched, deep_sleep);
                 size_t num_events = _lthread_poll(sched);
                 _lthread_handle_events(sched, num_events);
-                if (deep_sleep && sched->pool_state)
+                if (deep_sleep)
                 {
-                    lthread_mutex_lock(&sched->pool_state->mutex);
-                    --sched->pool_state->num_asleep;
-                    lthread_mutex_unlock(&sched->pool_state->mutex);
+                    lthread_mutex_lock(&sched->mutex);
+                    --sched->pool_state.num_asleep;
+                    lthread_mutex_unlock(&sched->mutex);
                 }
             }
         }
     }
-    fprintf(stderr, "sched %p done\n", sched);
     return 0;
 }
 
@@ -579,7 +550,7 @@ void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
             ++lt->sleep_usecs;
     }
     lt->state |= BIT(LT_ST_SLEEPING);
-    _lthread_yield(lt);
+    _lthread_yield();
     lt->state &= CLEARBIT(LT_ST_SLEEPING);
     lt->sleep_usecs = 0;
 }
@@ -639,7 +610,7 @@ static inline void _lthread_exit(struct lthread *lt)
 {
     lt->state |= BIT(LT_ST_EXITED);
     lt->sp = lt->stack + lt->stack_size;
-    _lthread_yield(lt);
+    _lthread_yield();
 }
 
 /*
@@ -667,7 +638,6 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
 
 static inline void _lthread_push_ready(struct lthread* lt)
 {
-    fprintf(stderr, "pushing work to %p\n", lt->sched);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
     TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
@@ -701,7 +671,6 @@ static inline void _lthread_sched_wake(
     struct lthread_sched *sched
 )
 {
-    fprintf(stderr, "waking up sched %p\n", sched);
     lthread_mutex_lock(&sched->mutex);
     switch(sched->block_state)
     {
@@ -722,20 +691,13 @@ static inline struct lthread* _lthread_sched_pop_ready(
     bool block
 )
 {
-    bool locked = false;
     if (block)
-    {
         lthread_mutex_lock(&sched->mutex);
-        locked = true;
-    }
-    else
-    {
-        locked = lthread_mutex_trylock(&sched->mutex);
-    }
+    else if (!lthread_mutex_trylock(&sched->mutex))
+        return 0;
     struct lthread *result = TAILQ_FIRST(&sched->ready);
     if (result)
         TAILQ_REMOVE(&sched->ready, result, ready_next);
-    if (locked)
-        lthread_mutex_unlock(&sched->mutex);
+    lthread_mutex_unlock(&sched->mutex);
     return result;
 }

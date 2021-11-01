@@ -107,7 +107,6 @@ typedef enum {
 typedef struct lthread_pool_state {
     size_t num_asleep;
     size_t num_schedulers;
-    lthread_mutex_t     mutex;
 } lthread_pool_state_t;
 
 struct lthread_sched {
@@ -117,22 +116,20 @@ struct lthread_sched {
     int                 page_size;
     uint64_t            default_timeout;
     struct lthread*     current_lthread;
-    lthread_sched_t*    next_sched;
-
-    // poller stuff
-    lthread_rb_sleep_t  sleeping;
-    lthread_rb_wait_t   waiting;
-
-    lthread_poller_t    poller;
-
-    // pool stuff
-    lthread_pool_state_t*pool_state;
-    lthread_sched_t*    sched_neighbor;
-    lthread_sched_block_state_t block_state;
-    lthread_mutex_t     mutex;
-    struct lthread_q    ready;
     struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
     size_t              lthread_cache_size;
+
+    // poller stuff
+    lthread_rb_wait_t   waiting;
+    lthread_poller_t    poller;
+
+    // shared stuff
+    lthread_mutex_t     mutex;
+    lthread_pool_state_t pool_state;
+    lthread_sched_t*    sched_neighbor;
+    lthread_sched_block_state_t block_state;
+    lthread_rb_sleep_t  sleeping;
+    struct lthread_q    ready;
 };
 
 
@@ -140,7 +137,6 @@ void _lthread_wakeup(struct lthread *lt);
 int _lthread_resume(struct lthread *lt);
 void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();
-void _lthread_yield(struct lthread *lt);
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
 void _lthread_cancel_event(struct lthread *lt);
