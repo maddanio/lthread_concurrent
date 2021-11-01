@@ -14,3 +14,10 @@ static inline int lthread_create_os_thread(
 {
     return pthread_create(result, 0, func, arg);
 }
+
+static inline int lthread_join_os_thread(
+    lthread_os_thread_t thread
+)
+{
+    return pthread_join(thread, 0);
+}

@@ -124,13 +124,16 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     }
     _lthread_curent_sched = schedulers[0];
     lthread_spawn(main_func, main_arg);
+    lthread_os_thread_t* threads = 0;
     if (num_aux_threads)
     {
-        lthread_os_thread_t* threads = (lthread_os_thread_t*)calloc(num_aux_threads, sizeof(lthread_os_thread_t));
+        threads = (lthread_os_thread_t*)calloc(num_aux_threads, sizeof(lthread_os_thread_t));
         for (size_t i = 0; i < num_aux_threads; ++i)
             lthread_create_os_thread(&threads[i], _lthread_run_sched, (void*)schedulers[i + 1]);        
     }
     _lthread_run_sched(schedulers[0]);
+    for (size_t i = 0; i < num_aux_threads; ++i)
+        lthread_join_os_thread(threads[i]);
     for (size_t i = 0; i < num_schedulers; ++i)
         _lthread_sched_free(schedulers[i]);
 }
@@ -360,7 +363,7 @@ static inline void* _lthread_run_sched(void* schedp)
     lthread_sched_t* sched = (lthread_sched_t*)schedp;
     _lthread_curent_sched = sched;
     bool all_done = false;
-    while (!all_done)
+    while (true || !all_done)
     {
         do
             _lthread_schedule_expired(sched);
@@ -396,6 +399,9 @@ static inline void* _lthread_run_sched(void* schedp)
             }
         }
     }
+    if (sched->sched_neighbor != sched)
+        _lthread_sched_wake(sched->sched_neighbor);
+    fprintf(stderr, "%p done\n", sched);
     return 0;
 }
 
@@ -660,7 +666,7 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
         result = _lthread_sched_pop_ready(sched, true);
     if (result)
     {
-        if (sched->sched_neighbor)
+        if (sched->sched_neighbor != sched)
         {
             _lthread_sched_wake(sched->sched_neighbor);
         }
