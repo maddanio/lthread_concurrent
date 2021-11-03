@@ -62,17 +62,7 @@ int lthread_cond_wait(struct lthread_cond *c, uint64_t timeout)
     return result;
 }
 
-void lthread_cond_signal(struct lthread_cond *c)
-{
-    struct lthread *lt = lthread_current();
-    lthread_mutex_lock(&c->mutex);
-    assert(c->owner == lt);
-    c->owner = NULL;
-    _lthread_cond_signal(c);
-    lthread_mutex_unlock(&c->mutex);
-}
-
-void lthread_cond_unlock(struct lthread_cond *c)
+void lthread_cond_unlock_signal(struct lthread_cond *c)
 {
     struct lthread *lt = lthread_current();
     lthread_mutex_lock(&c->mutex);

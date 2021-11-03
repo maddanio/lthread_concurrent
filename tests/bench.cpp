@@ -86,7 +86,7 @@ public:
             lthread_cond_wait(_cond, 0);
         auto result = std::move(_value);
         _value.reset();
-        lthread_cond_signal(_cond);
+        lthread_cond_unlock_signal(_cond);
         return result;
     }
     ~generator_t()
@@ -100,7 +100,7 @@ private:
         while (_value)
             lthread_cond_wait(_cond, 0);
         _value = std::move(value);
-        lthread_cond_signal(_cond);
+        lthread_cond_unlock_signal(_cond);
     }
     lthread_cond* _cond;
     fun_t _fun;
