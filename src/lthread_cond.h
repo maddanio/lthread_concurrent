@@ -13,13 +13,11 @@ extern "C" {
 
 int     lthread_cond_create(lthread_cond_t **c);
 void    lthread_cond_free(lthread_cond_t *c);
+
+void    lthread_cond_lock(lthread_cond_t *c);
 int     lthread_cond_wait(lthread_cond_t *c, uint64_t timeout);
 void    lthread_cond_signal(lthread_cond_t *c);
-void    lthread_cond_broadcast(lthread_cond_t *c);
-
-int     lthread_lock_create(struct lthread_lock **l);
-void    lthread_lock_lock(struct lthread_lock *l);
-int     lthread_lock_unlock(struct lthread_lock *l);
+void     lthread_cond_unlock(lthread_cond_t *c);
 
 void    _lthread_cond_remove_blocked(lthread_t* lt);
 

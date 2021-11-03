@@ -278,6 +278,7 @@ void _lthread_renice(struct lthread *lt)
 
 void _lthread_wakeup(struct lthread *lt)
 {
+    fprintf(stderr, "waking up %p\n", lt);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
     if ((lt->state & BIT(LT_ST_EXPIRED)) == 0)
@@ -349,6 +350,7 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     struct lthread *lt = NULL;
     if ((lt = _lthread_pop_ready(sched)))
     {
+        fprintf(stderr, "resuming %p\n", lt);
         _lthread_resume(lt);
         return true;
     }

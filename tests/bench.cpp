@@ -67,8 +67,7 @@ public:
     generator_t(fun_t fun)
     : _fun{std::move(fun)}
     {
-        lthread_cond_create(&_consume_cond);
-        lthread_cond_create(&_produce_cond);
+        lthread_cond_create(&_cond);
         lthread_spawn(
             [](void* arg){
                 auto self = (generator_t*)arg;
@@ -82,26 +81,28 @@ public:
     }
     std::optional<value_t> pull()
     {
-        lthread_cond_wait(_consume_cond, 0);
+        lthread_cond_lock(_cond);
+        while (!_value)
+            lthread_cond_wait(_cond, 0);
         auto result = std::move(_value);
-        lthread_cond_signal(_produce_cond);
+        _value.reset();
+        lthread_cond_signal(_cond);
         return result;
     }
     ~generator_t()
     {
-        lthread_cond_free(_consume_cond);
-        lthread_cond_free(_produce_cond);
+        lthread_cond_free(_cond);
     }
 private:
     void push(std::optional<value_t> value)
     {
+        lthread_cond_lock(_cond);
+        while (_value)
+            lthread_cond_wait(_cond, 0);
         _value = std::move(value);
-        lthread_cond_signal(_consume_cond);
-        if (_value)
-            lthread_cond_wait(_produce_cond, 0);
+        lthread_cond_signal(_cond);
     }
-    lthread_cond* _consume_cond;
-    lthread_cond* _produce_cond;
+    lthread_cond* _cond;
     fun_t _fun;
     std::optional<value_t> _value;
 };

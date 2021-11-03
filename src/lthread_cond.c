@@ -13,7 +13,6 @@ struct lthread_cond {
 };
 
 static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, struct lthread* self, uint64_t timeout);
-static inline void _lthread_cond_broadcast(struct lthread_cond *c);
 static inline void _lthread_cond_signal(struct lthread_cond *c);
 
 int lthread_cond_create(struct lthread_cond **c)
@@ -31,28 +30,6 @@ void lthread_cond_free(struct lthread_cond *c)
     free(c);
 }
 
-void lthread_cond_signal(struct lthread_cond *c)
-{
-    lthread_mutex_lock(&c->mutex);
-    _lthread_cond_signal(c);
-    lthread_mutex_unlock(&c->mutex);
-}
-
-void lthread_cond_broadcast(struct lthread_cond *c)
-{
-    lthread_mutex_lock(&c->mutex);
-    _lthread_cond_broadcast(c);
-    lthread_mutex_unlock(&c->mutex);
-}
-
-int lthread_cond_wait(struct lthread_cond *c, uint64_t timeout)
-{
-    struct lthread *self = lthread_current();
-    lthread_mutex_lock(&c->mutex);
-    int result = _lthread_cond_wait_unlock(c, self, timeout);
-    return result;
-}
-
 void lthread_cond_lock(struct lthread_cond *c)
 {
     struct lthread *self = lthread_current();
@@ -62,23 +39,47 @@ void lthread_cond_lock(struct lthread_cond *c)
         _lthread_cond_wait_unlock(c, self, 0);
         lthread_mutex_lock(&c->mutex);
     }
+    assert(c->owner == NULL);
     c->owner = self;
+    fprintf(stderr, "%p locked %p\n", lthread_current(), c);
     lthread_mutex_unlock(&c->mutex);
 }
 
-int lthread_lock_unlock(struct lthread_cond *c)
+int lthread_cond_wait(struct lthread_cond *c, uint64_t timeout)
+{
+    struct lthread *self = lthread_current();
+    lthread_mutex_lock(&c->mutex);
+    assert(self == c->owner);
+    fprintf(stderr, "%p waiting on %p\n", lthread_current(), c);
+    c->owner = NULL;
+    int result = _lthread_cond_wait_unlock(c, self, timeout);
+    if (result == 0)
+    {
+        lthread_mutex_lock(&c->mutex);
+        c->owner = self;
+        lthread_mutex_unlock(&c->mutex);
+    }
+    return result;
+}
+
+void lthread_cond_signal(struct lthread_cond *c)
 {
     struct lthread *lt = lthread_current();
     lthread_mutex_lock(&c->mutex);
-    if (c->owner)
-    {
-        if (c->owner != lt)
-            return -1;
-        c->owner = NULL;
-        _lthread_cond_signal(c);
-    }
+    assert(c->owner == lt);
+    c->owner = NULL;
+    _lthread_cond_signal(c);
     lthread_mutex_unlock(&c->mutex);
-    return 0;
+}
+
+void lthread_cond_unlock(struct lthread_cond *c)
+{
+    struct lthread *lt = lthread_current();
+    lthread_mutex_lock(&c->mutex);
+    assert(c->owner == lt);
+    c->owner = NULL;
+    _lthread_cond_signal(c);
+    lthread_mutex_unlock(&c->mutex);
 }
 
 void _lthread_cond_remove_blocked(lthread_t* lt)
@@ -101,22 +102,18 @@ static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, struct lthre
         return (0);
 }
 
-static inline void _lthread_cond_broadcast(struct lthread_cond *c)
-{
-    struct lthread *lt = NULL;
-    TAILQ_FOREACH(lt, &c->blocked_lthreads, blocked_next)
-    {
-        _lthread_wakeup(lt);
-    }
-    TAILQ_INIT(&c->blocked_lthreads);
-}
-
 static inline void _lthread_cond_signal(struct lthread_cond *c)
 {
+    fprintf(stderr, "%p signaling %p\n", lthread_current(), c);
+    c->owner = NULL;
     struct lthread *lt = TAILQ_FIRST(&c->blocked_lthreads);
     if (lt)
     {
         _lthread_wakeup(lt);
         TAILQ_REMOVE(&c->blocked_lthreads, lt, blocked_next);
+    }
+    else
+    {
+        fprintf(stderr, "noone listening to %p\n", c);
     }
 }
