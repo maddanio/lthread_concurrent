@@ -174,7 +174,7 @@ struct lthread* lthread_current()
 
 void lthread_yield()
 {
-    lthread_current()->state |= BIT(LT_ST_YIELDED);   
+    lthread_current()->state |= BIT(LT_ST_NEEDS_RESCHED);   
     _lthread_yield();
 }
 
@@ -200,6 +200,7 @@ static void _exec(intptr_t ltp)
 void _lthread_yield()
 {
     struct lthread* lt = lthread_current();
+    assert(lt->sched == _lthread_curent_sched);
     lt->sp = __builtin_frame_address(0);
     lt->ops = 0;
     _switch(&lt->sched->ctx, &lt->ctx);
@@ -207,20 +208,30 @@ void _lthread_yield()
 
 void _lthread_resume(struct lthread *lt)
 {
+    assert(lt->sched == _lthread_curent_sched);
     if (lt->cond)
         _lthread_cond_remove_blocked(lt);
-    _lthread_curent_sched->current_lthread = lt;
-    _switch(&lt->ctx, &_lthread_curent_sched->ctx);
-    _lthread_curent_sched->current_lthread = NULL;
+    lt->sched->current_lthread = lt;
+    lthread_mutex_unlock(&lt->sched->mutex);
+    _switch(&lt->ctx, &lt->sched->ctx);
     _lthread_madvise(lt);
     lt->state &= CLEARBIT(LT_ST_EXPIRED);
+    lthread_mutex_lock(&lt->sched->mutex);
+    lt->sched->current_lthread = NULL;
     if (lt->state & BIT(LT_ST_EXITED))
     {
+        lthread_mutex_unlock(&lt->sched->mutex);
         _lthread_free(lt);
     }
-    else if (lt->state & BIT(LT_ST_YIELDED))
+    else if (lt->state & BIT(LT_ST_NEEDS_RESCHED))
     {
-        _lthread_push_ready(lt);
+        lt->state &= CLEARBIT(LT_ST_NEEDS_RESCHED);
+        TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
+        lthread_mutex_unlock(&lt->sched->mutex);
+    }
+    else
+    {
+        lthread_mutex_unlock(&lt->sched->mutex);        
     }
 }
 
@@ -278,10 +289,14 @@ void _lthread_renice(struct lthread *lt)
 
 void _lthread_wakeup(struct lthread *lt)
 {
-    fprintf(stderr, "waking up %p\n", lt);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&sched->mutex);
-    if ((lt->state & BIT(LT_ST_EXPIRED)) == 0)
+    if (lt->sched->current_lthread == lt)
+    {
+        lt->state |= BIT(LT_ST_NEEDS_RESCHED);
+        lt->cond = NULL;
+    }
+    else if ((lt->state & BIT(LT_ST_EXPIRED)) == 0)
     {
         _lthread_desched_sleep(lt);
         lt->cond = NULL;
@@ -350,7 +365,6 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     struct lthread *lt = NULL;
     if ((lt = _lthread_pop_ready(sched)))
     {
-        fprintf(stderr, "resuming %p\n", lt);
         _lthread_resume(lt);
         return true;
     }
@@ -548,6 +562,7 @@ void _lthread_desched_sleep(struct lthread *lt)
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
 {
     uint64_t usecs = msecs * 1000u;
+    lthread_mutex_lock(&lt->sched->mutex);
     lt->sleep_usecs = _lthread_usec_now() + usecs;
     if (msecs) {
         // handle colisions by increasing wakeup time
@@ -556,6 +571,7 @@ void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
             ++lt->sleep_usecs;
     }
     lt->state |= BIT(LT_ST_SLEEPING);
+    lthread_mutex_unlock(&lt->sched->mutex);
     _lthread_yield();
     lt->state &= CLEARBIT(LT_ST_SLEEPING);
     lt->sleep_usecs = 0;

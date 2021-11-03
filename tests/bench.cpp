@@ -83,7 +83,9 @@ public:
     {
         lthread_cond_lock(_cond);
         while (!_value)
+        {
             lthread_cond_wait(_cond, 0);
+        }
         auto result = std::move(_value);
         _value.reset();
         lthread_cond_unlock_signal(_cond);
@@ -98,7 +100,9 @@ private:
     {
         lthread_cond_lock(_cond);
         while (_value)
+        {
             lthread_cond_wait(_cond, 0);
+        }
         _value = std::move(value);
         lthread_cond_unlock_signal(_cond);
     }

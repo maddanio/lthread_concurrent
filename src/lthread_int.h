@@ -67,7 +67,7 @@ enum lthread_st {
     LT_ST_SLEEPING,     /* lthread is sleeping */
     LT_ST_EXPIRED,      /* lthread has expired and needs to run */
     LT_ST_FDEOF,        /* lthread socket has shut down */
-    LT_ST_YIELDED       /* lthread yielded explicitly */
+    LT_ST_NEEDS_RESCHED /* lthread yielded explicitly */
 };
 
 struct lthread {
@@ -87,6 +87,7 @@ struct lthread {
     RB_ENTRY(lthread)       wait_node;      /* event tree node pointer */
     TAILQ_ENTRY(lthread)    ready_next;     /* ready to run list */
     TAILQ_ENTRY(lthread)    blocked_next;      /* blocked on a synchronization primitve */
+    bool                    is_blocked;
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
