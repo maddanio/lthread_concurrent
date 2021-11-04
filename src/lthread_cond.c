@@ -81,19 +81,19 @@ size_t _lthread_cond_num_blocked(struct lthread_cond *c)
     return result;
 }
 
-void _lthread_cond_remove_blocked(lthread_t* lt)
+void _lthread_cond_remove_blocked(lthread_t* self)
 {
-    lthread_mutex_lock(&lt->cond->mutex);
-    if (lt->is_blocked)
+    lthread_mutex_lock(&self->cond->mutex);
+    if (self->is_blocked)
     {
-        TAILQ_REMOVE(&lt->cond->blocked_lthreads, lt, blocked_next);
-        lthread_mutex_unlock(&lt->cond->mutex);
-        lt->cond = 0;
-        lt->is_blocked = false;
+        TAILQ_REMOVE(&self->cond->blocked_lthreads, self, blocked_next);
+        lthread_mutex_unlock(&self->cond->mutex);
+        self->cond = 0;
+        self->is_blocked = false;
     }
 }
 
-static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, struct lthread* self, uint64_t timeout)
+static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, lthread_t* self, uint64_t timeout)
 {
     //fprintf(stderr, "%p awaiting %p\n", self, c);
     TAILQ_INSERT_TAIL(&c->blocked_lthreads, self, blocked_next);

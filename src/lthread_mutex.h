@@ -10,23 +10,27 @@ typedef pthread_mutex_t lthread_mutex_t;
 static inline lthread_mutex_t lthread_mutex_create()
 {
     lthread_mutex_t mutex;
-    assert(pthread_mutex_init(&mutex, NULL) == 0);
+    int err = pthread_mutex_init(&mutex, NULL);
+    assert(err == 0);
     return mutex;
 }
 
 static inline void lthread_mutex_destroy(lthread_mutex_t* mutex)
 {
-    assert(pthread_mutex_destroy(mutex) == 0);
+    int err = pthread_mutex_destroy(mutex);
+    assert(err == 0);
 }
 
 static inline void lthread_mutex_lock(lthread_mutex_t* mutex)
 {
-    assert(pthread_mutex_lock(mutex) == 0);    
+    int err = pthread_mutex_lock(mutex);    
+    assert(err == 0);
 }
 
 static inline void lthread_mutex_unlock(lthread_mutex_t* mutex)
 {
-    assert(pthread_mutex_unlock(mutex) == 0);
+    int err = pthread_mutex_unlock(mutex);
+    assert(err == 0);
 }
 
 static inline bool lthread_mutex_trylock(lthread_mutex_t* mutex)

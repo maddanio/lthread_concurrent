@@ -8,7 +8,7 @@
 #include <lthread_int.h>
 #include <lthread_cond.h>
 
-static constexpr size_t n_iter = 200000;
+static constexpr size_t n_iter = 10000000;
 std::atomic<size_t> count = 0;
 
 class timer_t
@@ -33,7 +33,7 @@ void bench_thread()
     for (size_t i = 0; i < n_iter; ++i)
     {
         std::thread t{[]{++count;}};
-        t.join();
+        t.detach();
     }
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
@@ -138,7 +138,7 @@ void bench_lthread_generator()
             }
         }
         generator.pull();
-    }, 0, 0, 2);
+    }, 0, 0, 1);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
     else
@@ -147,8 +147,8 @@ void bench_lthread_generator()
 
 int main()
 {
-    bench_thread();
+    //bench_thread();
     bench_lthread();
-    bench_lthread_generator();
+    //bench_lthread_generator();
     return 0;
 }

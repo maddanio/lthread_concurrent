@@ -88,6 +88,7 @@ struct lthread {
     TAILQ_ENTRY(lthread)    ready_next;     /* ready to run list */
     TAILQ_ENTRY(lthread)    blocked_next;      /* blocked on a synchronization primitve */
     bool                    is_blocked;
+    bool                    is_running;
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
