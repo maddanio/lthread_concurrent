@@ -211,26 +211,30 @@ void _lthread_yield()
 void _lthread_resume(struct lthread *lt)
 {
     assert(lt->sched == _lthread_curent_sched);
-    assert(lt->is_running == false);
     if (lt->cond)
         _lthread_cond_remove_blocked(lt);
-    lt->sched->current_lthread = lt;
-    lthread_mutex_unlock(&lt->sched->mutex);
+    lthread_sched_t* sched = lt->sched;
+    lthread_mutex_lock(&lt->sched->mutex);
+    sched->current_lthread = lt;
+    lthread_mutex_unlock(&sched->mutex);
+    assert(lt->is_running == false);
     lt->is_running = true;
-    _switch(&lt->ctx, &lt->sched->ctx);
+    _switch(&lt->ctx, &sched->ctx);
     _lthread_madvise(lt);
     lt->state &= CLEARBIT(LT_ST_EXPIRED);
     lt->is_running = false;
-    lthread_mutex_lock(&lt->sched->mutex);
-    lt->sched->current_lthread = NULL;
+    lthread_mutex_lock(&sched->mutex);
+    sched->current_lthread = NULL;
     if (lt->state & BIT(LT_ST_NEEDS_RESCHED))
     {
         lt->state &= CLEARBIT(LT_ST_NEEDS_RESCHED);
-        TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
+        TAILQ_INSERT_TAIL(&sched->ready, lt, ready_next);
     }
-    lthread_mutex_unlock(&lt->sched->mutex);
-    if (lt->state & BIT(LT_ST_EXITED))
+    else if (lt->state & BIT(LT_ST_EXITED))
+    {
         _lthread_free(lt);
+    }
+    lthread_mutex_unlock(&sched->mutex);
 }
 
 static inline void _lthread_madvise(struct lthread *lt)

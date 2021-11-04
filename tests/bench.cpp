@@ -8,7 +8,7 @@
 #include <lthread_int.h>
 #include <lthread_cond.h>
 
-static constexpr size_t n_iter = 10000000;
+static constexpr size_t n_iter = 1000000;
 std::atomic<size_t> count = 0;
 
 class timer_t
@@ -51,7 +51,7 @@ void bench_lthread()
             }, NULL);
             lthread_yield();
         }
-    }, 0, 0, 2);
+    }, 0, 0, 5);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
     else
