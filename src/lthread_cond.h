@@ -18,8 +18,6 @@ void    lthread_cond_lock(lthread_cond_t *c);
 int     lthread_cond_wait(lthread_cond_t *c, uint64_t timeout);
 void    lthread_cond_unlock_signal(lthread_cond_t *c);
 
-void    _lthread_cond_remove_blocked(lthread_t* lt);
-
 #ifdef __cplusplus
 }
 #endif

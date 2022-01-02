@@ -81,23 +81,10 @@ size_t _lthread_cond_num_blocked(struct lthread_cond *c)
     return result;
 }
 
-void _lthread_cond_remove_blocked(lthread_t* self)
-{
-    lthread_mutex_lock(&self->cond->mutex);
-    if (self->is_blocked)
-    {
-        TAILQ_REMOVE(&self->cond->blocked_lthreads, self, blocked_next);
-        lthread_mutex_unlock(&self->cond->mutex);
-        self->cond = 0;
-        self->is_blocked = false;
-    }
-}
-
 static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, lthread_t* self, uint64_t timeout)
 {
     //fprintf(stderr, "%p awaiting %p\n", self, c);
     TAILQ_INSERT_TAIL(&c->blocked_lthreads, self, blocked_next);
-    self->cond = c;
     self->is_blocked = true;
     lthread_mutex_unlock(&c->mutex);
     lthread_sleep(timeout);
@@ -110,10 +97,11 @@ static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, lthread_t* s
 static inline void _lthread_cond_signal(struct lthread_cond *c)
 {
     struct lthread *lt = TAILQ_FIRST(&c->blocked_lthreads);
-    //fprintf(stderr, "%p signaling %p\n", c, lt);
+    //fprintf(stderr, "%p signaling %p\n", c->owner, lt);
     c->owner = lt;
     if (lt)
     {
+        assert(lt->is_blocked);
         TAILQ_REMOVE(&c->blocked_lthreads, lt, blocked_next);
         lt->is_blocked = false;
         _lthread_wakeup(lt);

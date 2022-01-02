@@ -46,12 +46,13 @@
 #define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
 
+#define LTHREAD_TRACE 1
+
 #define BIT(x) (1 << (x))
 #define CLEARBIT(x) ~(1 << (x))
 
 struct lthread;
 struct lthread_sched;
-struct lthread_cond;
 typedef struct lthread_sched lthread_sched_t;
 
 TAILQ_HEAD(lthread_q, lthread);
@@ -66,8 +67,7 @@ enum lthread_st {
     LT_ST_EXITED,       /* lthread has exited and needs cleanup */
     LT_ST_SLEEPING,     /* lthread is sleeping */
     LT_ST_EXPIRED,      /* lthread has expired and needs to run */
-    LT_ST_FDEOF,        /* lthread socket has shut down */
-    LT_ST_NEEDS_RESCHED /* lthread yielded explicitly */
+    LT_ST_FDEOF         /* lthread socket has shut down */
 };
 
 struct lthread {
@@ -92,7 +92,12 @@ struct lthread {
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
-    struct lthread_cond*    cond;
+
+    bool needs_resched;
+
+#if LTHREAD_TRACE
+    size_t trace_cnt;
+#endif
 };
 
 RB_HEAD(lthread_rb_sleep, lthread);
@@ -115,6 +120,7 @@ typedef struct lthread_pool_state {
 
 struct lthread_sched {
     // local
+    size_t              id;
     cpu_ctx_t           ctx;
     size_t              stack_size;
     int                 page_size;
@@ -122,6 +128,13 @@ struct lthread_sched {
     struct lthread*     current_lthread;
     struct lthread*     lthread_cache[LTHREAD_CACHE_SIZE];
     size_t              lthread_cache_size;
+
+#if LTHREAD_TRACE
+    int64_t                 trace_fd;        /* fd for mmapped tracing data */
+    void*                   trace_ptr;       /* mmapped trace data */
+    size_t                  trace_size;      /* available space left for trace data */
+    size_t                  trace_offset;    /* available space left for trace data */
+#endif
 
     // poller stuff
     lthread_rb_wait_t   waiting;

@@ -35,6 +35,7 @@ void bench_thread()
         std::thread t{[]{++count;}};
         t.detach();
     }
+    while (count < n_iter);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
 }
@@ -106,8 +107,8 @@ private:
         _value = std::move(value);
         lthread_cond_unlock_signal(_cond);
     }
-    lthread_cond* _cond;
     fun_t _fun;
+    lthread_cond* _cond;
     std::optional<value_t> _value;
 };
 
@@ -134,11 +135,11 @@ void bench_lthread_generator()
             else
             {
                 ++count;
-                fprintf(stderr, "ok %lu == %lu\n", target, *value);
+                //fprintf(stderr, "ok %lu == %lu\n", target, *value);
             }
         }
         generator.pull();
-    }, 0, 0, 1);
+    }, 0, 0, 10);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
     else
@@ -149,6 +150,6 @@ int main()
 {
     //bench_thread();
     bench_lthread();
-    //bench_lthread_generator();
+    bench_lthread_generator();
     return 0;
 }
