@@ -356,7 +356,8 @@ static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 static size_t _lthread_poll(struct lthread_sched* sched)
 {
     uint64_t usecs = _lthread_has_ready(sched) ? 0 : _lthread_min_timeout(sched);
-    return lthread_poller_poll(&sched->poller, usecs);
+    size_t result = lthread_poller_poll(&sched->poller, usecs);
+    return result;
 }
 
 static uint64_t
@@ -400,7 +401,7 @@ static inline bool _lthread_resume_ready(struct lthread_sched *sched)
     }
     else
     {
-        return false;        
+        return false;
     }
 }
 
@@ -434,13 +435,13 @@ static inline void* _lthread_run_sched(void* schedp)
             if (!all_done)
             {
                 size_t num_events = _lthread_poll(sched);
-                _lthread_handle_events(sched, num_events);
                 if (deep_sleep)
                 {
                     lthread_mutex_lock(&sched->pool_state->mutex);
                     --sched->pool_state->num_asleep;
                     lthread_mutex_unlock(&sched->pool_state->mutex);
                 }
+                _lthread_handle_events(sched, num_events);
             }
         }
     }
@@ -592,8 +593,8 @@ void _lthread_desched_sleep(struct lthread *lt)
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
 {
     uint64_t usecs = msecs * 1000u;
-    lthread_mutex_lock(&lt->sched->mutex);
     lt->sleep_usecs = _lthread_usec_now() + usecs;
+    lthread_mutex_lock(&lt->sched->mutex);
     if (msecs) {
         // handle colisions by increasing wakeup time
         // a min heap would probably be better
@@ -680,7 +681,7 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
             _lthread_cancel_event(lt);
             _lthread_desched_sleep(lt);
             lt->state |= BIT(LT_ST_EXPIRED);
-            _lthread_push_ready(lt);
+            TAILQ_INSERT_TAIL(&sched->ready, lt, ready_next);
             continue;
         }
         break;

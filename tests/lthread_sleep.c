@@ -11,7 +11,7 @@ a(void *x)
     int i = 3;
     struct timeval t1 = {0, 0};
     struct timeval t2 = {0, 0};
-    int sleep_for = 100;
+    int sleep_for = 10;
     while (i--) {
         gettimeofday(&t1, NULL);
         fprintf(stderr,"%p/%d: going to sleep for %d\n", lthread_current(), i, sleep_for);
