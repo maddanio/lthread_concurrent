@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <lthread.h>
+#include <arpa/inet.h>
 
 struct cli_info {
     /* other stuff if needed*/
@@ -14,17 +15,6 @@ typedef struct cli_info cli_info_t;
 
 char *reply = "HTTP/1.0 200 OK\r\nContent-length: 11\r\n\r\nHello Kannan";
 
-unsigned long long int
-fibonacci(unsigned long long int n)
-{
-    if (n == 0)
-        return 0;
-     if (n == 1)
-        return 1;
-
-     return fibonacci(n - 1) + fibonacci(n - 2);
-}
-
 void
 http_serv(void *arg)
 {
@@ -32,7 +22,6 @@ http_serv(void *arg)
     char *buf = NULL;
     unsigned long long int ret = 0;
     char ipstr[INET6_ADDRSTRLEN];
-    lthread_detach();
 
     inet_ntop(AF_INET, &cli_info->peer_addr.sin_addr, ipstr, INET_ADDRSTRLEN);
     printf("Accepted connection on IP %s\n", ipstr);
@@ -58,7 +47,7 @@ http_serv(void *arg)
 }
 
 void
-listener(lthread_t *lt, void *arg)
+listener(void *arg)
 {
     int cli_fd = 0;
     int lsn_fd = 0;
@@ -67,9 +56,7 @@ listener(lthread_t *lt, void *arg)
     struct sockaddr_in peer_addr = {};
     struct   sockaddr_in sin = {};
     socklen_t addrlen = sizeof(peer_addr);
-    lthread_t *cli_lt = NULL;
     cli_info_t *cli_info = NULL;
-    char ipstr[INET6_ADDRSTRLEN];
 
     /* create listening socket */
     lsn_fd = lthread_socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -109,17 +96,14 @@ listener(lthread_t *lt, void *arg)
         cli_info->peer_addr = peer_addr;
         cli_info->fd = cli_fd;
         /* launch a new lthread that takes care of this client */
-        ret = lthread_create(&cli_lt, http_serv, cli_info);
+        lthread_spawn(http_serv, cli_info);
     }
 }
 
 int
 main(int argc, char **argv)
 {
-    lthread_t *lt = NULL;
-
-    lthread_create(&lt, listener, NULL);
-    lthread_run();
+    lthread_run(listener, 0, 0, 10);
 
     return 0;
 }

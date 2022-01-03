@@ -17,7 +17,6 @@ udp_client(void *args)
     int s;
     int ret;
     char buf[64] = "hello world!";
-    lthread_detach();
 
     if ((s=lthread_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP))==-1) {
         perror("error");
@@ -44,9 +43,6 @@ udp_client(void *args)
 int
 main(void)
 {
-    lthread_t *lt;
-    lthread_create(&lt, udp_client, NULL);
-    lthread_run();
-
+    lthread_run(udp_client, 0, 0, 0);
     return 0;
  }
