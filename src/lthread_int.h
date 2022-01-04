@@ -103,9 +103,6 @@ struct lthread {
 
 RB_HEAD(lthread_rb_sleep, lthread);
 typedef struct lthread_rb_sleep lthread_rb_sleep_t;
-RB_HEAD(lthread_rb_wait, lthread);
-typedef struct lthread_rb_wait lthread_rb_wait_t;
-RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
 typedef enum {
     LTHREAD_SCHED_WILL_BLOCK = 0,
@@ -117,6 +114,7 @@ typedef struct lthread_pool_state {
     size_t num_asleep;
     size_t num_schedulers;
     lthread_mutex_t mutex;
+    lthread_sched_t* next;
 } lthread_pool_state_t;
 
 struct lthread_sched {
@@ -151,6 +149,14 @@ struct lthread_sched {
 };
 
 
+void _lthread_pool_push_ready(
+    lthread_pool_state_t* pool,
+    lthread_t* lt
+);
+void _lthread_sched_push_ready(
+    lthread_sched_t* sched,
+    lthread_t* lt
+);
 void _lthread_wakeup(struct lthread *lt);
 void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();

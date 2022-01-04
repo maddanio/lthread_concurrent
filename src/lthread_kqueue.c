@@ -65,7 +65,7 @@ int lthread_poller_ev_is_read(struct kevent *ev)
 
 int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
 {
-    return kevent(
+    int result = kevent(
         poller->poller_fd,
         poller->changelist,
         poller->nchanges,
@@ -74,6 +74,7 @@ int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
         &t
     );
     poller->nchanges = 0;
+    return result;
 }
 
 void lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)

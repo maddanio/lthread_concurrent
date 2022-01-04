@@ -38,6 +38,7 @@
 #define POLL_EVENT_TYPE struct epoll_event
 #endif
 #include <poll.h>
+#include "tree.h"
 
 struct lthread_sched;
 struct lthread;
@@ -48,6 +49,10 @@ enum lthread_event {
 
 #define LT_MAX_EVENTS    (1024)
 
+RB_HEAD(lthread_rb_wait, lthread);
+typedef struct lthread_rb_wait lthread_rb_wait_t;
+RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
+
 typedef struct lthread_poller {
     int                 poller_fd;
 #if defined(__FreeBSD__) || defined(__APPLE__)
@@ -56,10 +61,11 @@ typedef struct lthread_poller {
     int                 eventfd;
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
     int                 nchanges;
-    int                 num_new_events;    
+    int                 num_new_events;
+    lthread_rb_wait_t   waiting;
 } lthread_poller_t;
 
-size_t lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs);
+int lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs);
 int lthread_poller_init(lthread_poller_t* poller);
 void lthread_poller_close(lthread_poller_t* poller);
 

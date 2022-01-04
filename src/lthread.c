@@ -64,7 +64,6 @@ static uint64_t _lthread_min_timeout(struct lthread_sched *);
 static size_t  _lthread_poll(struct lthread_sched* sched);
 static void _lthread_schedule_expired(struct lthread_sched *sched);
 static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2);
-static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
 static inline void _lthread_handle_events(struct lthread_sched *sched, size_t num_events);
 static inline struct lthread* _lthread_handle_event(
     struct lthread_sched *sched,
@@ -87,8 +86,9 @@ static inline void _lthread_sched_wake(lthread_sched_t* sched);
 static inline int _lthread_sched_isdone(lthread_sched_t* sched);
 static void _exec(intptr_t ltp);
 
+static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool);
+
 RB_GENERATE(lthread_rb_sleep, lthread, sleep_node, _lthread_sleep_cmp);
-RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 #define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
 #define FD_EVENT(f) ((int32_t)(f))
 #define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
@@ -120,6 +120,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     }
     lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
     lthread_pool_state_t* pool_state = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
+    memset(pool_state, 0, sizeof(lthread_pool_state_t));
     pool_state->mutex = lthread_mutex_create();
     pool_state->num_schedulers = num_schedulers;
     pool_state->num_asleep = 0;
@@ -130,6 +131,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
         last_sched = schedulers[i];
     }
     _lthread_curent_sched = schedulers[0];
+    pool_state->next = schedulers[0];
     lthread_spawn(main_func, main_arg);
     lthread_os_thread_t* threads = 0;
     if (num_aux_threads)
@@ -342,16 +344,6 @@ static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2)
     if (l1->sleep_usecs == l2->sleep_usecs)
         return (0);
     return (1);
-}
-
-static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
-{
-    if (l1->fd_wait < l2->fd_wait)
-        return (-1);
-    else if (l1->fd_wait == l2->fd_wait)
-        return (0);
-    else
-        return (1);
 }
 
 static size_t _lthread_poll(struct lthread_sched* sched)
@@ -694,7 +686,14 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
 
 static inline void _lthread_push_ready(struct lthread* lt)
 {
-    lthread_sched_t* sched = lt->sched;
+    _lthread_sched_push_ready(lt->sched, lt);
+}
+
+void _lthread_sched_push_ready(
+    lthread_sched_t* sched,
+    lthread_t* lt
+)
+{
     lthread_mutex_lock(&sched->mutex);
     TAILQ_INSERT_TAIL(&sched->ready, lt, ready_next);
     lthread_mutex_unlock(&sched->mutex);
@@ -784,3 +783,26 @@ static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthre
     ++lthread->trace_cnt;
 #endif
 }
+
+void _lthread_pool_push_ready(
+    lthread_pool_state_t* pool,
+    lthread_t* lt
+)
+{
+    _lthread_sched_push_ready(
+        _lthread_pool_get_next(pool),
+        lt
+    );
+}
+
+static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool)
+{
+    lthread_sched_t* next;
+    lthread_mutex_lock(&pool->mutex);
+    next = pool->next;
+    if (next->sched_neighbor)
+        pool->next = next->sched_neighbor;
+    lthread_mutex_unlock(&pool->mutex);
+    return next;
+}
+
