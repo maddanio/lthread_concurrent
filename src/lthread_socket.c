@@ -195,16 +195,16 @@ int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
 
 int lthread_close(int fd)
 {
-    struct lthread *lt = NULL;
-
+    lthread_t* lt = NULL;
+    lthread_sched_t* sched = _lthread_get_sched();
     /* wake up the lthreads waiting on this fd and notify them of close */
-    lt = _lthread_desched_event(fd, LT_EV_READ);
+    lt = _lthread_desched_event(sched, fd, LT_EV_READ);
     if (lt) {
         TAILQ_INSERT_TAIL(&_lthread_get_sched()->ready, lt, ready_next);
         lt->state |= BIT(LT_ST_FDEOF);
     }
 
-    lt = _lthread_desched_event(fd, LT_EV_WRITE);
+    lt = _lthread_desched_event(sched, fd, LT_EV_WRITE);
     if (lt) {
         TAILQ_INSERT_TAIL(&_lthread_get_sched()->ready, lt, ready_next);
         lt->state |= BIT(LT_ST_FDEOF);

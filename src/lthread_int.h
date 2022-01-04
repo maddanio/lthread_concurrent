@@ -53,6 +53,7 @@
 
 struct lthread;
 struct lthread_sched;
+typedef struct lthread lthread_t;
 typedef struct lthread_sched lthread_sched_t;
 
 TAILQ_HEAD(lthread_q, lthread);
@@ -155,8 +156,8 @@ void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-void _lthread_cancel_event(struct lthread *lt);
-struct lthread* _lthread_desched_event(int fd, enum lthread_event e);
+void _lthread_cancel_event(lthread_t* lt);
+lthread_t* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthread_event e);
 void _lthread_sched_event(
     struct lthread *lt,
     int fd,

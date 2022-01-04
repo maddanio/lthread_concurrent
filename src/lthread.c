@@ -348,9 +348,10 @@ static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 {
     if (l1->fd_wait < l2->fd_wait)
         return (-1);
-    if (l1->fd_wait == l2->fd_wait)
+    else if (l1->fd_wait == l2->fd_wait)
         return (0);
-    return (1);
+    else
+        return (1);
 }
 
 static size_t _lthread_poll(struct lthread_sched* sched)
@@ -457,16 +458,19 @@ static inline void _lthread_handle_events(struct lthread_sched *sched, size_t nu
     for (size_t i = 0; i < num_events; ++i)
     {
         fd = lthread_poller_ev_get_fd(&sched->poller.eventlist[i]);
-        if (fd == sched->poller.eventfd) {
+        if (fd == sched->poller.eventfd)
+        {
             lthread_poller_ev_clear_trigger(&sched->poller);
-            continue;
         }
-        is_eof = lthread_poller_ev_is_eof(&sched->poller.eventlist[i]);
-        if (is_eof)
-            errno = ECONNRESET;
-        struct lthread* lt_read = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
-        struct lthread* lt_write = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
-        assert(lt_write != NULL || lt_read != NULL);
+        else
+        {
+            is_eof = lthread_poller_ev_is_eof(&sched->poller.eventlist[i]);
+            if (is_eof)
+                errno = ECONNRESET;
+            struct lthread* lt_read = _lthread_handle_event(sched, fd, LT_EV_READ, is_eof);
+            struct lthread* lt_write = _lthread_handle_event(sched, fd, LT_EV_WRITE, is_eof);
+            assert(lt_write != NULL || lt_read != NULL);
+        }
     }
 }
 
@@ -477,7 +481,7 @@ static inline struct lthread* _lthread_handle_event(
     bool is_eof
 )
 {
-    struct lthread* lt = _lthread_desched_event(fd, ev);
+    struct lthread* lt = _lthread_desched_event(sched, fd, ev);
     if (lt != NULL)
     {
         if (is_eof)
@@ -492,7 +496,7 @@ static inline struct lthread* _lthread_handle_event(
  * rbtree. This is safe to be called even if the lthread wasn't waiting on an
  * event.
  */
-void _lthread_cancel_event(struct lthread *lt)
+void _lthread_cancel_event(lthread_t *lt)
 {
     if (lt->state & BIT(LT_ST_WAIT_READ)) {
         lthread_poller_ev_clear_rd(&lt->sched->poller, FD_ONLY(lt->fd_wait));
@@ -503,7 +507,7 @@ void _lthread_cancel_event(struct lthread *lt)
     }
     if (lt->fd_wait >= 0)
     {
-        _lthread_desched_event(FD_ONLY(lt->fd_wait), FD_EVENT(lt->fd_wait));
+        _lthread_desched_event(lt->sched, FD_ONLY(lt->fd_wait), FD_EVENT(lt->fd_wait));
     }
     lt->fd_wait = -1;
 }
@@ -513,17 +517,16 @@ void _lthread_cancel_event(struct lthread *lt)
  * It also deschedules the lthread from sleeping in case it was in sleeping
  * tree.
  */
-struct lthread* _lthread_desched_event(int fd, enum lthread_event e)
+struct lthread* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthread_event e)
 {
-    struct lthread *lt = NULL;
-    struct lthread_sched *sched = _lthread_get_sched();
     struct lthread find_lt;
     find_lt.fd_wait = FD_KEY(fd, e);
-    if ((lt = RB_FIND(lthread_rb_wait, &sched->waiting, &find_lt))) {
+    lthread_t *lt = RB_FIND(lthread_rb_wait, &sched->waiting, &find_lt);
+    if (lt) {
         RB_REMOVE(lthread_rb_wait, &lt->sched->waiting, lt);
         _lthread_desched_sleep(lt);
     }
-    return (lt);
+    return lt;
 }
 
 /*
