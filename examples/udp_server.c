@@ -33,10 +33,10 @@ udp_server(void *args)
         return;
     }
 
-    while (1) {
-        ret = lthread_recvfrom(s, buf, 64, 0, (struct sockaddr *)&client, &listener_len, 1000);
+    do {
+        ret = lthread_recvfrom(s, buf, 64, 0, (struct sockaddr *)&client, &listener_len);
         printf("ret returned %d: %s\n", ret, buf);
-    }
+    } while(ret == 0);
 
    close(s);
 }

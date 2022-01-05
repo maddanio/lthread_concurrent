@@ -299,6 +299,7 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     RB_INIT(&new_sched->waiting);
     TAILQ_INIT(&new_sched->ready);
     new_sched->mutex = lthread_mutex_create();
+    new_sched->cond = lthread_os_cond_create();
     new_sched->stack_size = stack_size;
     new_sched->id = id + 1;
 #if LTHREAD_TRACE
@@ -484,27 +485,6 @@ static inline struct lthread* _lthread_handle_event(
 }
 
 /*
- * Cancels registered event in poller and deschedules (fd, ev) -> lt from
- * rbtree. This is safe to be called even if the lthread wasn't waiting on an
- * event.
- */
-void _lthread_cancel_event(lthread_t *lt)
-{
-    if (lt->state & BIT(LT_ST_WAIT_READ)) {
-        lthread_poller_ev_clear_rd(&lt->sched->poller, FD_ONLY(lt->fd_wait));
-        lt->state &= CLEARBIT(LT_ST_WAIT_READ);
-    } else if (lt->state & BIT(LT_ST_WAIT_WRITE)) {
-        lthread_poller_ev_clear_wr(&lt->sched->poller, FD_ONLY(lt->fd_wait));
-        lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
-    }
-    if (lt->fd_wait >= 0)
-    {
-        _lthread_desched_event(lt->sched, FD_ONLY(lt->fd_wait), FD_EVENT(lt->fd_wait));
-    }
-    lt->fd_wait = -1;
-}
-
-/*
  * Deschedules an event by removing the (fd, ev) -> lt node from rbtree.
  * It also deschedules the lthread from sleeping in case it was in sleeping
  * tree.
@@ -526,15 +506,11 @@ struct lthread* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthr
  * Sets its state to LT_EV_(READ|WRITE) and inserts lthread in waiting rbtree.
  * When the event occurs, the state is cleared and node is removed by 
  * _lthread_desched_event() called from lthread_run().
- *
- * If event doesn't occur and lthread expired waiting, _lthread_cancel_event()
- * must be called.
  */
 void _lthread_sched_event(
     struct lthread *lt,
     int fd,
-    enum lthread_event e,
-    uint64_t timeout
+    enum lthread_event e
 )
 {
     struct lthread *lt_tmp = NULL;
@@ -559,11 +535,7 @@ void _lthread_sched_event(
     lt->fd_wait = FD_KEY(fd, e);
     lt_tmp = RB_INSERT(lthread_rb_wait, &lt->sched->waiting, lt);
     assert(lt_tmp == NULL);
-    if (timeout == -1)
-        return;
-    _lthread_sched_sleep(lt, timeout);
-    lt->fd_wait = -1;
-    lt->state &= CLEARBIT(st);
+    _lthread_yield();
 }
 
 /*
@@ -673,7 +645,6 @@ static void _lthread_schedule_expired(struct lthread_sched *sched)
     lthread_mutex_lock(&sched->mutex);
     while ((lt = RB_MIN(lthread_rb_sleep, &sched->sleeping)) != NULL) {
         if (lt->sleep_usecs <= current_usecs) {
-            _lthread_cancel_event(lt);
             _lthread_desched_sleep(lt);
             lt->state |= BIT(LT_ST_EXPIRED);
             TAILQ_INSERT_TAIL(&sched->ready, lt, ready_next);

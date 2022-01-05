@@ -141,6 +141,7 @@ struct lthread_sched {
 
     // shared stuff
     lthread_mutex_t     mutex;
+    lthread_os_cond_t   cond;
     lthread_pool_state_t *pool_state;
     lthread_sched_t*    sched_neighbor;
     lthread_sched_block_state_t block_state;
@@ -162,13 +163,11 @@ void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-void _lthread_cancel_event(lthread_t* lt);
 lthread_t* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthread_event e);
 void _lthread_sched_event(
     struct lthread *lt,
     int fd,
-    enum lthread_event e,
-    uint64_t timeout
+    enum lthread_event e
 );
 int _lthread_switch(cpu_ctx_t *new_ctx, cpu_ctx_t *cur_ctx);
 

@@ -20,7 +20,6 @@ http_serv(void *arg)
 {
     cli_info_t *cli_info = arg;
     char *buf = NULL;
-    unsigned long long int ret = 0;
     char ipstr[INET6_ADDRSTRLEN];
 
     inet_ntop(AF_INET, &cli_info->peer_addr.sin_addr, ipstr, INET_ADDRSTRLEN);
@@ -29,18 +28,10 @@ http_serv(void *arg)
     if ((buf = malloc(1024)) == NULL)
         return;
 
-    /* read data from client or timeout in 5 secs */
-    ret = lthread_recv(cli_info->fd, buf, 1024, 0, 5000);
-
-    /* did we timeout before the user has sent us anything? */
-    if (ret == -2) {
-        lthread_close(cli_info->fd);
-        free(buf);
-        free(arg);
-        return;
+    while (lthread_recv(cli_info->fd, buf, 1024, 0) > 0)
+    {
+        lthread_send(cli_info->fd, reply, strlen(reply), 0);
     }
-
-    lthread_send(cli_info->fd, reply, strlen(reply), 0);
     lthread_close(cli_info->fd);
     free(buf);
     free(arg);

@@ -6,6 +6,7 @@
 #include <errno.h>
 
 typedef pthread_mutex_t lthread_mutex_t;
+typedef pthread_cond_t lthread_os_cond_t;
 
 static inline lthread_mutex_t lthread_mutex_create()
 {
@@ -42,4 +43,21 @@ static inline bool lthread_mutex_trylock(lthread_mutex_t* mutex)
         assert(result == EBUSY);
         return false;
     }
+}
+
+static inline lthread_os_cond_t lthread_os_cond_create()
+{
+    lthread_os_cond_t cond;
+    int err = pthread_cond_init(&cond, 0);
+    assert(err == 0);
+    return cond;
+}
+
+static inline void lthread_os_cond_wait(
+    lthread_os_cond_t* cond,
+    lthread_mutex_t* mutex
+)
+{
+    int err = pthread_cond_wait(cond, mutex);
+    assert(err == 0);
 }
