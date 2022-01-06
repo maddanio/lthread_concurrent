@@ -63,7 +63,7 @@ int lthread_poller_ev_is_read(struct kevent *ev)
     return ev->filter == EVFILT_READ;
 }
 
-int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
+int _lthread_poller_poll(lthread_poller_t* poller, struct timespec* t)
 {
     int result = kevent(
         poller->poller_fd,
@@ -71,7 +71,7 @@ int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
         poller->nchanges,
         poller->eventlist,
         LT_MAX_EVENTS,
-        &t
+        t
     );
     poller->nchanges = 0;
     return result;

@@ -110,19 +110,23 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
         schedulers[i] = _lthread_sched_create(stack_size, i);
     }
     lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
-    lthread_pool_state_t* pool_state = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
-    memset(pool_state, 0, sizeof(lthread_pool_state_t));
-    pool_state->mutex = lthread_mutex_create();
-    pool_state->num_schedulers = num_schedulers;
-    pool_state->num_asleep = 0;
+
+    lthread_pool_state_t* pool = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
+    memset(pool, 0, sizeof(lthread_pool_state_t));
+    pool->mutex = lthread_mutex_create();
+    pool->num_schedulers = num_schedulers;
+    pool->num_asleep = 0;
+    lthread_poller_init(&pool->poller, pool);
+    lthread_poller_start(&pool->poller);
+
     for (size_t i = 0; i < num_schedulers; ++i)
     {
-        schedulers[i]->pool_state = pool_state;
+        schedulers[i]->pool = pool;
         last_sched->sched_neighbor = schedulers[i];
         last_sched = schedulers[i];
     }
     _lthread_curent_sched = schedulers[0];
-    pool_state->next = schedulers[0];
+    pool->next = schedulers[0];
     lthread_spawn(main_func, main_arg);
     lthread_os_thread_t* threads = 0;
     if (num_aux_threads)
@@ -136,6 +140,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
         lthread_join_os_thread(threads[i]);
     for (size_t i = 0; i < num_schedulers; ++i)
         _lthread_sched_free(schedulers[i]);
+    lthread_poller_close(&pool->poller);
 }
 
 int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
@@ -260,7 +265,6 @@ static inline void _lthread_madvise(struct lthread *lt)
 
 void _lthread_sched_free(lthread_sched_t* sched)
 {
-    lthread_poller_close(&sched->poller);
 #if LTHREAD_TRACE
     if (sched->trace_fd)
     {
@@ -279,11 +283,6 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
         return 0;
     }
     memset(new_sched, 0, sizeof(lthread_sched_t));
-    if (lthread_poller_init(&new_sched->poller) == -1) {
-        perror("Failed to initialize poller\n");
-        _lthread_sched_free(new_sched);
-        return 0;
-    }
     new_sched->page_size = getpagesize();
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
@@ -397,9 +396,9 @@ static inline void* _lthread_run_sched(void* schedp)
             bool deep_sleep = _lthread_sched_isdone(sched);
             if (deep_sleep)
             {
-                lthread_mutex_lock(&sched->pool_state->mutex);
-                all_done = ++sched->pool_state->num_asleep == sched->pool_state->num_schedulers;
-                lthread_mutex_unlock(&sched->pool_state->mutex);
+                lthread_mutex_lock(&sched->pool->mutex);
+                all_done = ++sched->pool->num_asleep == sched->pool->num_schedulers;
+                lthread_mutex_unlock(&sched->pool->mutex);
             }
             if (!all_done)
             {
@@ -410,9 +409,9 @@ static inline void* _lthread_run_sched(void* schedp)
                 );
                 if (deep_sleep)
                 {
-                    lthread_mutex_lock(&sched->pool_state->mutex);
-                    --sched->pool_state->num_asleep;
-                    lthread_mutex_unlock(&sched->pool_state->mutex);
+                    lthread_mutex_lock(&sched->pool->mutex);
+                    --sched->pool->num_asleep;
+                    lthread_mutex_unlock(&sched->pool->mutex);
                 }
             }
             lthread_mutex_unlock(&sched->mutex);
@@ -462,10 +461,10 @@ void _lthread_sched_event(
 
     if (e == LT_EV_READ) {
         st = LT_ST_WAIT_READ;
-        lthread_poller_ev_register_rd(&lt->sched->poller, fd);
+        lthread_poller_ev_register_rd(&lt->sched->pool->poller, fd);
     } else if (e == LT_EV_WRITE) {
         st = LT_ST_WAIT_WRITE;
-        lthread_poller_ev_register_wr(&lt->sched->poller, fd);
+        lthread_poller_ev_register_wr(&lt->sched->pool->poller, fd);
     } else {
         assert(0);
     }

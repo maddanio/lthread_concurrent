@@ -30,6 +30,7 @@
 #ifndef LTHREAD_POLLER_H
 #define LTHREAD_POLLER_H 
 
+#include "lthread_os_thread.h"
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #include <sys/event.h>
 #define POLL_EVENT_TYPE struct kevent
@@ -38,9 +39,13 @@
 #define POLL_EVENT_TYPE struct epoll_event
 #endif
 #include <poll.h>
+#include <stdbool.h>
 #include "tree.h"
+#include "lthread_os_thread.h"
 
-struct lthread_sched;
+struct lthread_pool_state;
+typedef struct lthread_pool_state lthread_pool_state_t;
+
 struct lthread;
 enum lthread_event {
     LT_EV_READ,
@@ -58,15 +63,19 @@ typedef struct lthread_poller {
 #if defined(__FreeBSD__) || defined(__APPLE__)
     struct kevent       changelist[LT_MAX_EVENTS];
 #endif
+#if ! (defined(__FreeBSD__) && defined(__APPLE__))
     int                 eventfd;
+#endif
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
     int                 nchanges;
     int                 num_new_events;
     lthread_rb_wait_t   waiting;
+    struct lthread_pool_state* pool;
+    lthread_os_thread_t thread;
 } lthread_poller_t;
 
-int lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs);
-int lthread_poller_init(lthread_poller_t* poller);
+int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool);
+void lthread_poller_start(lthread_poller_t* poller);
 void lthread_poller_close(lthread_poller_t* poller);
 
 void lthread_poller_ev_register_rd(lthread_poller_t*, int fd);
@@ -84,6 +93,6 @@ int lthread_poller_ev_is_read(POLL_EVENT_TYPE *ev);
 int lthread_poller_ev_is_write(POLL_EVENT_TYPE *ev);
 
 int _lthread_poller_create();
-int _lthread_poller_poll(lthread_poller_t* poller, struct timespec t);
+int _lthread_poller_poll(lthread_poller_t* poller, struct timespec* t);
 
 #endif

@@ -28,6 +28,7 @@
 
 
 #include "lthread_poller.h"
+#include "lthread_os_thread.h"
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #include "lthread_kqueue.c"
 #else
@@ -38,6 +39,7 @@
 
 #include <unistd.h>
 #include <inttypes.h>
+#include <string.h>
 
 #define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
 #define FD_EVENT(f) ((int32_t)(f))
@@ -45,7 +47,6 @@
 
 static inline struct lthread* _lthread_poller_handle_event(
     lthread_poller_t* poller,
-    lthread_pool_state_t* pool,
     int fd,
     enum lthread_event ev,
     bool is_eof
@@ -68,10 +69,12 @@ static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 
 RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
-int lthread_poller_init(lthread_poller_t* poller)
+int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool)
 {
+    memset(poller, 0, sizeof(lthread_poller_t));
     if ((poller->poller_fd = _lthread_poller_create()) == -1)
         return -1;
+    poller->pool = pool;
     lthread_poller_ev_register_trigger(poller);
     return 0;
 }
@@ -82,6 +85,7 @@ void lthread_poller_close(lthread_poller_t* poller)
 #if ! (defined(__FreeBSD__) && defined(__APPLE__))
     close(poller->eventfd);
 #endif
+    lthread_join_os_thread(poller->thread);
 }
 
 void lthread_poller_schedule_event(
@@ -113,35 +117,14 @@ void lthread_poller_schedule_event(
     lt->fd_wait = -1;
 }
 
-int lthread_poller_poll(lthread_poller_t* poller, uint64_t usecs)
-{
-    int ret = 0;
-    poller->num_new_events = 0;
-    struct timespec t = {0, 0};
-    if (usecs)
-    {
-        t.tv_sec =  usecs / 1000000u;
-        if (t.tv_sec != 0)
-            t.tv_nsec  =  (usecs % 1000u)  * 1000000u;
-        else
-            t.tv_nsec = usecs * 1000u;
-    }
-    do
-        ret = _lthread_poller_poll(poller, t);
-    while(ret == -1 && errno == EINTR);
-    return ret;
-}
-
-bool lthread_poller_poll2(
-    lthread_poller_t* poller,
-    lthread_pool_state_t* pool
+static inline bool lthread_poller_poll(
+    lthread_poller_t* poller
 )
 {
     poller->num_new_events = 0;
-    struct timespec t = {0, 0};
     int num_events;
     do
-        num_events = _lthread_poller_poll(poller, t);
+        num_events = _lthread_poller_poll(poller, 0);
     while(num_events == -1 && errno == EINTR);
     if (num_events >= 0)
     {
@@ -151,8 +134,8 @@ bool lthread_poller_poll2(
             int is_eof = lthread_poller_ev_is_eof(&poller->eventlist[i]);
             if (is_eof)
                 errno = ECONNRESET;
-            struct lthread* lt_read = _lthread_poller_handle_event(poller, pool, fd, LT_EV_READ, is_eof);
-            struct lthread* lt_write = _lthread_poller_handle_event(poller, pool, fd, LT_EV_WRITE, is_eof);
+            struct lthread* lt_read = _lthread_poller_handle_event(poller, fd, LT_EV_READ, is_eof);
+            struct lthread* lt_write = _lthread_poller_handle_event(poller, fd, LT_EV_WRITE, is_eof);
             assert(lt_write != NULL || lt_read != NULL);
         }
         return true;
@@ -163,9 +146,24 @@ bool lthread_poller_poll2(
     }
 }
 
+static inline void* lthread_poller_threadfun(void* arg)
+{
+    lthread_poller_t* poller = (lthread_poller_t*)arg;
+    while (lthread_poller_poll(poller));
+    return 0;
+}
+
+void lthread_poller_start(lthread_poller_t* poller)
+{
+    lthread_create_os_thread(
+        &poller->thread,
+        lthread_poller_threadfun,
+        poller
+    );
+}
+
 static inline struct lthread* _lthread_poller_handle_event(
     lthread_poller_t* poller,
-    lthread_pool_state_t* pool,
     int fd,
     enum lthread_event ev,
     bool is_eof
@@ -185,7 +183,7 @@ static inline struct lthread* _lthread_poller_handle_event(
                 lt->state &= CLEARBIT(LT_EV_WRITE);
                 break;
         }
-        _lthread_pool_push_ready(pool, lt);
+        _lthread_pool_push_ready(poller->pool, lt);
     }
     return lt;
 }

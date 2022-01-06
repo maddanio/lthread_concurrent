@@ -115,6 +115,7 @@ typedef struct lthread_pool_state {
     size_t num_schedulers;
     lthread_mutex_t mutex;
     lthread_sched_t* next;
+    lthread_poller_t    poller;
 } lthread_pool_state_t;
 
 struct lthread_sched {
@@ -137,12 +138,11 @@ struct lthread_sched {
 
     // poller stuff
     lthread_rb_wait_t   waiting;
-    lthread_poller_t    poller;
 
     // shared stuff
     lthread_mutex_t     mutex;
     lthread_os_cond_t   cond;
-    lthread_pool_state_t *pool_state;
+    lthread_pool_state_t *pool;
     lthread_sched_t*    sched_neighbor;
     lthread_sched_block_state_t block_state;
     lthread_rb_sleep_t  sleeping;
