@@ -41,6 +41,7 @@
 #include <poll.h>
 #include <stdbool.h>
 #include "tree.h"
+#include "lthread_mutex.h"
 #include "lthread_os_thread.h"
 
 struct lthread_pool_state;
@@ -60,15 +61,12 @@ RB_PROTOTYPE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
 typedef struct lthread_poller {
     int                 poller_fd;
-#if defined(__FreeBSD__) || defined(__APPLE__)
-    struct kevent       changelist[LT_MAX_EVENTS];
-#endif
 #if ! (defined(__FreeBSD__) && defined(__APPLE__))
     int                 eventfd;
 #endif
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
-    int                 nchanges;
     int                 num_new_events;
+    lthread_mutex_t     mutex;
     lthread_rb_wait_t   waiting;
     struct lthread_pool_state* pool;
     lthread_os_thread_t thread;
@@ -77,6 +75,13 @@ typedef struct lthread_poller {
 int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool);
 void lthread_poller_start(lthread_poller_t* poller);
 void lthread_poller_close(lthread_poller_t* poller);
+void lthread_poller_schedule_event(
+    lthread_poller_t* poller,
+    struct lthread *lt,
+    int fd,
+    enum lthread_event e
+);
+bool lthread_poller_has_pending_events(lthread_poller_t* poller);
 
 void lthread_poller_ev_register_rd(lthread_poller_t*, int fd);
 void lthread_poller_ev_register_wr(lthread_poller_t*, int fd);

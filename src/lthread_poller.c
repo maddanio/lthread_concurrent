@@ -28,6 +28,7 @@
 
 
 #include "lthread_poller.h"
+#include "lthread_mutex.h"
 #include "lthread_os_thread.h"
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #include "lthread_kqueue.c"
@@ -42,8 +43,6 @@
 #include <string.h>
 
 #define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
-#define FD_EVENT(f) ((int32_t)(f))
-#define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
 
 static inline struct lthread* _lthread_poller_handle_event(
     lthread_poller_t* poller,
@@ -56,27 +55,38 @@ static inline lthread_t* _lthread_poller_desched_event(
     int fd,
     enum lthread_event e
 );
-
-static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
-{
-    if (l1->fd_wait < l2->fd_wait)
-        return (-1);
-    else if (l1->fd_wait == l2->fd_wait)
-        return (0);
-    else
-        return (1);
-}
+static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
+static inline void* _lthread_poller_threadfun(void* arg);
 
 RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
 int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool)
 {
     memset(poller, 0, sizeof(lthread_poller_t));
+    RB_INIT(&poller->waiting);
+    poller->mutex = lthread_mutex_create();
     if ((poller->poller_fd = _lthread_poller_create()) == -1)
         return -1;
     poller->pool = pool;
-    lthread_poller_ev_register_trigger(poller);
     return 0;
+}
+
+void lthread_poller_start(lthread_poller_t* poller)
+{
+    lthread_create_os_thread(
+        &poller->thread,
+        _lthread_poller_threadfun,
+        poller
+    );
+}
+
+bool lthread_poller_has_pending_events(lthread_poller_t* poller)
+{
+    bool result;
+    lthread_mutex_lock(&poller->mutex);
+    result = RB_EMPTY(&poller->waiting);
+    lthread_mutex_unlock(&poller->mutex);
+    return !result;
 }
 
 void lthread_poller_close(lthread_poller_t* poller)
@@ -95,7 +105,6 @@ void lthread_poller_schedule_event(
     enum lthread_event e
 )
 {
-    struct lthread *lt_tmp = NULL;
     assert(
         (lt->state & BIT(LT_ST_WAIT_READ)) == 0 &&
         (lt->state & BIT(LT_ST_WAIT_WRITE)) == 0
@@ -112,9 +121,10 @@ void lthread_poller_schedule_event(
             break;
     }
     lt->fd_wait = FD_KEY(fd, e);
-    lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
+    lthread_mutex_lock(&poller->mutex);
+    struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
     assert(lt_tmp == NULL);
-    lt->fd_wait = -1;
+    lthread_mutex_unlock(&poller->mutex);
 }
 
 static inline bool lthread_poller_poll(
@@ -146,20 +156,11 @@ static inline bool lthread_poller_poll(
     }
 }
 
-static inline void* lthread_poller_threadfun(void* arg)
+static inline void* _lthread_poller_threadfun(void* arg)
 {
     lthread_poller_t* poller = (lthread_poller_t*)arg;
     while (lthread_poller_poll(poller));
     return 0;
-}
-
-void lthread_poller_start(lthread_poller_t* poller)
-{
-    lthread_create_os_thread(
-        &poller->thread,
-        lthread_poller_threadfun,
-        poller
-    );
 }
 
 static inline struct lthread* _lthread_poller_handle_event(
@@ -185,6 +186,16 @@ static inline struct lthread* _lthread_poller_handle_event(
         }
         _lthread_pool_push_ready(poller->pool, lt);
     }
+    else
+    {
+        switch(ev)
+        {
+            case LT_EV_READ:
+                break;
+            case LT_EV_WRITE:
+                break;
+        }
+    }
     return lt;
 }
 
@@ -196,8 +207,20 @@ static inline lthread_t* _lthread_poller_desched_event(
 {
     lthread_t find_lt;
     find_lt.fd_wait = FD_KEY(fd, e);
+    lthread_mutex_lock(&poller->mutex);
     lthread_t* lt = RB_FIND(lthread_rb_wait, &poller->waiting, &find_lt);
     if (lt)
         RB_REMOVE(lthread_rb_wait, &poller->waiting, lt);
+    lthread_mutex_unlock(&poller->mutex);
     return lt;
+}
+
+static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
+{
+    if (l1->fd_wait < l2->fd_wait)
+        return -1;
+    else if (l1->fd_wait == l2->fd_wait)
+        return 0;
+    else
+        return 1;
 }

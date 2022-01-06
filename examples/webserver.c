@@ -94,7 +94,7 @@ listener(void *arg)
 int
 main(int argc, char **argv)
 {
-    lthread_run(listener, 0, 0, 10);
+    lthread_run(listener, 0, 0, 0);
 
     return 0;
 }

@@ -117,7 +117,6 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     pool->num_schedulers = num_schedulers;
     pool->num_asleep = 0;
     lthread_poller_init(&pool->poller, pool);
-    lthread_poller_start(&pool->poller);
 
     for (size_t i = 0; i < num_schedulers; ++i)
     {
@@ -135,6 +134,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
         for (size_t i = 0; i < num_aux_threads; ++i)
             lthread_create_os_thread(&threads[i], _lthread_run_sched, (void*)schedulers[i + 1]);
     }
+    lthread_poller_start(&pool->poller);
     _lthread_run_sched(schedulers[0]);
     for (size_t i = 0; i < num_aux_threads; ++i)
         lthread_join_os_thread(threads[i]);
@@ -153,7 +153,6 @@ int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
     if (err != 0)
         return err;
     lt->fun = fun;
-    lt->fd_wait = -1;
     lt->arg = arg;
     lt->is_running = false;
     lt->is_blocked = false;
@@ -286,7 +285,6 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     new_sched->page_size = getpagesize();
     new_sched->default_timeout = 3000000u;
     RB_INIT(&new_sched->sleeping);
-    RB_INIT(&new_sched->waiting);
     TAILQ_INIT(&new_sched->ready);
     new_sched->mutex = lthread_mutex_create();
     new_sched->cond = lthread_os_cond_create();
@@ -354,7 +352,6 @@ static inline int
 _lthread_sched_isdone(struct lthread_sched *sched)
 {
     return (
-        RB_EMPTY(&sched->waiting) &&
         RB_EMPTY(&sched->sleeping) &&
         !_lthread_has_ready(sched)
     );
@@ -400,6 +397,7 @@ static inline void* _lthread_run_sched(void* schedp)
                 all_done = ++sched->pool->num_asleep == sched->pool->num_schedulers;
                 lthread_mutex_unlock(&sched->pool->mutex);
             }
+            all_done &= !lthread_poller_has_pending_events(&sched->pool->poller);
             if (!all_done)
             {
                 lthread_os_cond_wait(
@@ -423,26 +421,9 @@ static inline void* _lthread_run_sched(void* schedp)
 }
 
 /*
- * Deschedules an event by removing the (fd, ev) -> lt node from rbtree.
- * It also deschedules the lthread from sleeping in case it was in sleeping
- * tree.
- */
-struct lthread* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthread_event e)
-{
-    struct lthread find_lt;
-    find_lt.fd_wait = FD_KEY(fd, e);
-    lthread_t *lt = RB_FIND(lthread_rb_wait, &sched->waiting, &find_lt);
-    if (lt) {
-        RB_REMOVE(lthread_rb_wait, &lt->sched->waiting, lt);
-        _lthread_desched_sleep(lt);
-    }
-    return lt;
-}
-
-/*
  * Schedules an lthread for a poller event.
  * Sets its state to LT_EV_(READ|WRITE) and inserts lthread in waiting rbtree.
- * When the event occurs, the state is cleared and node is removed by 
+ * When the event occurs, the state is cleared and node is removed by
  * _lthread_desched_event() called from lthread_run().
  */
 void _lthread_sched_event(
@@ -451,28 +432,12 @@ void _lthread_sched_event(
     enum lthread_event e
 )
 {
-    struct lthread *lt_tmp = NULL;
-    enum lthread_st st;
-    if (lt->state & BIT(LT_ST_WAIT_READ) || lt->state & BIT(LT_ST_WAIT_WRITE)) {
-        printf("Unexpected event. lt %p fd %"PRId64" already in %"PRId32" state\n",
-            lt, lt->fd_wait, lt->state);
-        assert(0);
-    }
-
-    if (e == LT_EV_READ) {
-        st = LT_ST_WAIT_READ;
-        lthread_poller_ev_register_rd(&lt->sched->pool->poller, fd);
-    } else if (e == LT_EV_WRITE) {
-        st = LT_ST_WAIT_WRITE;
-        lthread_poller_ev_register_wr(&lt->sched->pool->poller, fd);
-    } else {
-        assert(0);
-    }
-
-    lt->state |= BIT(st);
-    lt->fd_wait = FD_KEY(fd, e);
-    lt_tmp = RB_INSERT(lthread_rb_wait, &lt->sched->waiting, lt);
-    assert(lt_tmp == NULL);
+    lthread_poller_schedule_event(
+        &lt->sched->pool->poller,
+        lt,
+        fd,
+        e
+    );
     _lthread_yield();
 }
 

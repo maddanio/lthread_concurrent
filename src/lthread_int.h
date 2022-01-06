@@ -136,9 +136,6 @@ struct lthread_sched {
     size_t                  trace_offset;    /* available space left for trace data */
 #endif
 
-    // poller stuff
-    lthread_rb_wait_t   waiting;
-
     // shared stuff
     lthread_mutex_t     mutex;
     lthread_os_cond_t   cond;
