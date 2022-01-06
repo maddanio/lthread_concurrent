@@ -104,8 +104,6 @@ ssize_t lthread_sendto(
     socklen_t dest_len
 );
 ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt);
-int     lthread_wait_read(int fd);
-int     lthread_wait_write(int fd);
 #ifdef __FreeBSD__
 int     lthread_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr);
 #endif

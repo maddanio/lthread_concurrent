@@ -213,7 +213,6 @@ void _lthread_yield()
     assert(lt->sched == _lthread_curent_sched);
     _lthread_trace_event(lt->sched, lt, lthread_trace_evt_yield);
     lt->sp = __builtin_frame_address(0);
-    lt->ops = 0;
     _switch(&lt->sched->ctx, &lt->ctx);
 }
 
@@ -302,12 +301,6 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
 #endif
     bzero(&new_sched->ctx, sizeof(cpu_ctx_t));
     return new_sched;
-}
-
-void _lthread_renice(struct lthread *lt)
-{
-    if (++(lt->ops) >= 5)
-        lthread_yield();
 }
 
 void _lthread_wakeup(struct lthread *lt)

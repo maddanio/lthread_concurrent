@@ -29,9 +29,7 @@ http_serv(void *arg)
         return;
 
     while (lthread_recv(cli_info->fd, buf, 1024, 0) > 0)
-    {
         lthread_send(cli_info->fd, reply, strlen(reply), 0);
-    }
     lthread_close(cli_info->fd);
     free(buf);
     free(arg);

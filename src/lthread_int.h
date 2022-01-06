@@ -82,7 +82,6 @@ struct lthread {
     int64_t                 fd_wait;        /* fd we are waiting on */
     void                    *stack;         /* ptr to lthread_stack */
     void                    *sp;            /* ptr to last stack ptr */
-    uint32_t                ops;            /* num of ops since yield */
     uint64_t                sleep_usecs;    /* until when lthread is sleeping */
     RB_ENTRY(lthread)       sleep_node;     /* sleep tree node pointer */
     RB_ENTRY(lthread)       wait_node;      /* event tree node pointer */
@@ -156,11 +155,9 @@ void _lthread_sched_push_ready(
     lthread_t* lt
 );
 void _lthread_wakeup(struct lthread *lt);
-void _lthread_renice(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-lthread_t* _lthread_desched_event(lthread_sched_t* sched, int fd, enum lthread_event e);
 void _lthread_sched_event(
     struct lthread *lt,
     int fd,

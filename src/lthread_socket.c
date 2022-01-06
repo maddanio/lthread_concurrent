@@ -49,16 +49,6 @@
 #endif
 
 
-#define LTHREAD_WAIT(fn, event)                                 \
-fn                                                              \
-{                                                               \
-    struct lthread *lt = _lthread_get_sched()->current_lthread;  \
-    _lthread_sched_event(lt, fd, event);            \
-    if (lt->state & BIT(LT_ST_FDEOF))                           \
-        return (-1);                                            \
-    return (0);                                                 \
-}
-
 #define LTHREAD_RECV(x, y)                                  \
 x {                                                         \
     ssize_t ret = 0;                                        \
@@ -66,7 +56,6 @@ x {                                                         \
     while (1) {                                             \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
-        _lthread_renice(lt);                                \
         ret = y;                                            \
         if (ret == -1 && errno != EAGAIN)                   \
             return (-1);                                    \
@@ -83,12 +72,9 @@ x {                                                         \
     ssize_t ret = 0;                                        \
     ssize_t recvd = 0;                                      \
     struct lthread *lt = _lthread_get_sched()->current_lthread;   \
-                                                            \
     while (recvd != length) {                               \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
-                                                            \
-        _lthread_renice(lt);                                \
         ret = y;                                            \
         if (ret == 0)                                       \
             return (recvd);                                 \
@@ -112,7 +98,6 @@ x {                                                         \
     while (sent != length) {                                \
         if (lt->state & BIT(LT_ST_FDEOF))                   \
             return (-1);                                    \
-        _lthread_renice(lt);                                \
         ret = y;                                            \
         if (ret == 0)                                       \
             return (sent);                                  \
@@ -143,15 +128,12 @@ x {                                                         \
     }                                                       \
 }                                                           \
 
-const struct linger nolinger = { .l_onoff = 1, .l_linger = 1 };
-
 int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
 {
     int ret = -1;
     struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     while (1) {
-        _lthread_renice(lt);
         ret = accept(fd, addr, len);
         if (ret == -1 && 
             (errno == ENFILE || 
@@ -280,9 +262,6 @@ err:
     return (ret);
 }
 
-LTHREAD_WAIT(int lthread_wait_read(int fd, int timeout_ms), LT_EV_READ);
-LTHREAD_WAIT(int lthread_wait_write(int fd, int timeout_ms), LT_EV_WRITE);
-
 LTHREAD_RECV(
     ssize_t lthread_recv(int fd, void *buf, size_t length, int flags,
         uint64_t timeout),
@@ -346,7 +325,6 @@ int lthread_connect(int fd, struct sockaddr *name, socklen_t namelen)
     struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     while (1) {
-        _lthread_renice(lt);
         ret = connect(fd, name, namelen);
         if (ret == 0)
             break;
@@ -370,7 +348,6 @@ ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt)
     struct lthread *lt = _lthread_get_sched()->current_lthread;
 
     do {
-        _lthread_renice(lt);
         ssize_t n = writev(fd, iov + iov_index, iovcnt - iov_index);
         if (n > 0) {
             int i = 0;
