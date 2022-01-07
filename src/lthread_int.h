@@ -154,6 +154,7 @@ void _lthread_sched_push_ready(
     lthread_sched_t* sched,
     lthread_t* lt
 );
+void _lthread_resched(struct lthread *lt);
 void _lthread_wakeup(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);

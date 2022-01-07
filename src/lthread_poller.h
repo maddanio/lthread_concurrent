@@ -44,9 +44,6 @@
 #include "lthread_mutex.h"
 #include "lthread_os_thread.h"
 
-struct lthread_pool_state;
-typedef struct lthread_pool_state lthread_pool_state_t;
-
 struct lthread;
 enum lthread_event {
     LT_EV_READ,
@@ -68,11 +65,11 @@ typedef struct lthread_poller {
     int                 num_new_events;
     lthread_mutex_t     mutex;
     lthread_rb_wait_t   waiting;
-    struct lthread_pool_state* pool;
     lthread_os_thread_t thread;
+    size_t              num_pending_events;
 } lthread_poller_t;
 
-int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool);
+int lthread_poller_init(lthread_poller_t* poller);
 void lthread_poller_start(lthread_poller_t* poller);
 void lthread_poller_close(lthread_poller_t* poller);
 void lthread_poller_schedule_event(

@@ -74,6 +74,7 @@ static inline void* _lthread_run_sched(void* sched);
 static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthread, lthread_trace_event_t event);
 static inline struct lthread* _lthread_sched_pop_ready(lthread_sched_t* sched, bool block);
 static inline void _lthread_sched_wake(lthread_sched_t* sched);
+static inline void _lthread_sched_wake_unsafe(lthread_sched_t* sched);
 static inline int _lthread_sched_isdone(lthread_sched_t* sched);
 static void _exec(intptr_t ltp);
 
@@ -116,7 +117,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     pool->mutex = lthread_mutex_create();
     pool->num_schedulers = num_schedulers;
     pool->num_asleep = 0;
-    lthread_poller_init(&pool->poller, pool);
+    lthread_poller_init(&pool->poller);
 
     for (size_t i = 0; i < num_schedulers; ++i)
     {
@@ -303,6 +304,24 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     return new_sched;
 }
 
+void _lthread_resched(struct lthread *lt)
+{
+    lthread_sched_t* sched = lt->sched;
+    lthread_mutex_lock(&sched->mutex);
+    if (lt->sched->current_lthread == lt)
+    {
+        fprintf(stderr, "request resched\n");
+        lt->needs_resched = true;
+    }
+    else
+    {
+        fprintf(stderr, "enqueue\n");
+        TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
+    }
+    _lthread_sched_wake_unsafe(lt->sched);
+    lthread_mutex_unlock(&sched->mutex);
+}
+
 void _lthread_wakeup(struct lthread *lt)
 {
     lthread_sched_t* sched = lt->sched;
@@ -313,9 +332,10 @@ void _lthread_wakeup(struct lthread *lt)
     }
     else if ((lt->state & BIT(LT_ST_EXPIRED)) == 0)
     {
-        _lthread_desched_sleep(lt);
         TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
     }
+    _lthread_desched_sleep(lt);
+    _lthread_sched_wake_unsafe(lt->sched);
     lthread_mutex_unlock(&sched->mutex);
 }
 
@@ -590,12 +610,11 @@ static inline struct lthread* _lthread_pop_ready(struct lthread_sched *sched)
     return result;
 }
 
-static inline void _lthread_sched_wake(
+static inline void _lthread_sched_wake_unsafe(
     struct lthread_sched *sched
 )
 {
     bool need_trigger = false;
-    lthread_mutex_lock(&sched->mutex);
     switch(sched->block_state)
     {
         case LTHREAD_SCHED_WILL_BLOCK:
@@ -611,6 +630,15 @@ static inline void _lthread_sched_wake(
     {
         lthread_os_cond_signal(&sched->cond);
     }
+}
+
+
+static inline void _lthread_sched_wake(
+    struct lthread_sched *sched
+)
+{
+    lthread_mutex_lock(&sched->mutex);
+    _lthread_sched_wake_unsafe(sched);
     lthread_mutex_unlock(&sched->mutex);
 }
 

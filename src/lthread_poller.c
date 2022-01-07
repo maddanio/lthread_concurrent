@@ -41,6 +41,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
+#include <stdio.h>
 
 #define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
 
@@ -60,14 +61,13 @@ static inline void* _lthread_poller_threadfun(void* arg);
 
 RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
-int lthread_poller_init(lthread_poller_t* poller, lthread_pool_state_t* pool)
+int lthread_poller_init(lthread_poller_t* poller)
 {
     memset(poller, 0, sizeof(lthread_poller_t));
     RB_INIT(&poller->waiting);
     poller->mutex = lthread_mutex_create();
     if ((poller->poller_fd = _lthread_poller_create()) == -1)
         return -1;
-    poller->pool = pool;
     return 0;
 }
 
@@ -84,7 +84,7 @@ bool lthread_poller_has_pending_events(lthread_poller_t* poller)
 {
     bool result;
     lthread_mutex_lock(&poller->mutex);
-    result = RB_EMPTY(&poller->waiting);
+    result = poller->num_pending_events == 0;
     lthread_mutex_unlock(&poller->mutex);
     return !result;
 }
@@ -124,6 +124,7 @@ void lthread_poller_schedule_event(
     lthread_mutex_lock(&poller->mutex);
     struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
     assert(lt_tmp == NULL);
+    ++poller->num_pending_events;
     lthread_mutex_unlock(&poller->mutex);
 }
 
@@ -184,7 +185,11 @@ static inline struct lthread* _lthread_poller_handle_event(
                 lt->state &= CLEARBIT(LT_EV_WRITE);
                 break;
         }
-        _lthread_pool_push_ready(poller->pool, lt);
+        fprintf(stderr, "resched for fd %d\n", fd);
+        _lthread_resched(lt);
+        lthread_mutex_lock(&poller->mutex);
+        --poller->num_pending_events;
+        lthread_mutex_unlock(&poller->mutex);
     }
     else
     {
@@ -205,9 +210,9 @@ static inline lthread_t* _lthread_poller_desched_event(
     enum lthread_event e
 )
 {
+    lthread_mutex_lock(&poller->mutex);
     lthread_t find_lt;
     find_lt.fd_wait = FD_KEY(fd, e);
-    lthread_mutex_lock(&poller->mutex);
     lthread_t* lt = RB_FIND(lthread_rb_wait, &poller->waiting, &find_lt);
     if (lt)
         RB_REMOVE(lthread_rb_wait, &poller->waiting, lt);

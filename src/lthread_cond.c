@@ -88,10 +88,19 @@ static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, lthread_t* s
     self->is_blocked = true;
     lthread_mutex_unlock(&c->mutex);
     lthread_sleep(timeout);
-    if (self->state & BIT(LT_ST_EXPIRED))
-        return (-2);
+    lthread_mutex_lock(&c->mutex);
+    if (self->is_blocked)
+    {
+        TAILQ_REMOVE(&c->blocked_lthreads, self, blocked_next);
+        self->is_blocked = false;
+        lthread_mutex_unlock(&c->mutex);
+        return -2;
+    }
     else
-        return (0);
+    {
+        lthread_mutex_unlock(&c->mutex);
+        return 0;
+    }
 }
 
 static inline void _lthread_cond_signal(struct lthread_cond *c)
