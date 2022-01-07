@@ -93,7 +93,7 @@ listener(void *arg)
         if (i > 0 && i % 1000 == 0)
         {
             uint64_t now = _lthread_usec_now();
-            fprintf(stderr, "req/s: %llu\n", (now - start_time) / 1000);
+            fprintf(stderr, "req/s: %llu\n", 1000000000 /  (now - start_time));
             start_time = now;
         }
     }
@@ -102,7 +102,7 @@ listener(void *arg)
 int
 main(int argc, char **argv)
 {
-    lthread_run(listener, 0, 0, 0);
+    lthread_run(listener, 0, 0, 10);
 
     return 0;
 }
