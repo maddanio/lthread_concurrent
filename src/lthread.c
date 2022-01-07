@@ -310,12 +310,10 @@ void _lthread_resched(struct lthread *lt)
     lthread_mutex_lock(&sched->mutex);
     if (lt->sched->current_lthread == lt)
     {
-        fprintf(stderr, "request resched\n");
         lt->needs_resched = true;
     }
     else
     {
-        fprintf(stderr, "enqueue\n");
         TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
     }
     _lthread_sched_wake_unsafe(lt->sched);

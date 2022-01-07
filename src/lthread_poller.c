@@ -109,6 +109,12 @@ void lthread_poller_schedule_event(
         (lt->state & BIT(LT_ST_WAIT_READ)) == 0 &&
         (lt->state & BIT(LT_ST_WAIT_WRITE)) == 0
     );
+    lthread_mutex_lock(&poller->mutex);
+    lt->fd_wait = FD_KEY(fd, e);
+    struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
+    assert(lt_tmp == NULL);
+    ++poller->num_pending_events;
+    lthread_mutex_unlock(&poller->mutex);
     switch(e)
     {
         case LT_EV_READ:
@@ -120,12 +126,6 @@ void lthread_poller_schedule_event(
             lthread_poller_ev_register_wr(poller, fd);
             break;
     }
-    lt->fd_wait = FD_KEY(fd, e);
-    lthread_mutex_lock(&poller->mutex);
-    struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
-    assert(lt_tmp == NULL);
-    ++poller->num_pending_events;
-    lthread_mutex_unlock(&poller->mutex);
 }
 
 static inline bool lthread_poller_poll(
@@ -185,7 +185,6 @@ static inline struct lthread* _lthread_poller_handle_event(
                 lt->state &= CLEARBIT(LT_EV_WRITE);
                 break;
         }
-        fprintf(stderr, "resched for fd %d\n", fd);
         _lthread_resched(lt);
         lthread_mutex_lock(&poller->mutex);
         --poller->num_pending_events;

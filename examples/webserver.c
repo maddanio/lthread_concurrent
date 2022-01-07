@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <lthread.h>
+#include <lthread_int.h>
 #include <arpa/inet.h>
 
 struct cli_info {
@@ -23,7 +24,7 @@ http_serv(void *arg)
     char ipstr[INET6_ADDRSTRLEN];
 
     inet_ntop(AF_INET, &cli_info->peer_addr.sin_addr, ipstr, INET_ADDRSTRLEN);
-    printf("Accepted connection on IP %s\n", ipstr);
+    //printf("Accepted connection on IP %s\n", ipstr);
 
     if ((buf = malloc(1024)) == NULL)
         return;
@@ -70,7 +71,10 @@ listener(void *arg)
 
     listen(lsn_fd, 128);
 
-    while (1) {
+    uint64_t start_time = _lthread_usec_now();
+
+    for (size_t i = 0;;++i)
+    {
         /* block until a new connection arrives */
         cli_fd = lthread_accept(lsn_fd, (struct sockaddr*)&peer_addr, &addrlen);
         if (cli_fd == -1) {
@@ -86,6 +90,12 @@ listener(void *arg)
         cli_info->fd = cli_fd;
         /* launch a new lthread that takes care of this client */
         lthread_spawn(http_serv, cli_info);
+        if (i > 0 && i % 1000 == 0)
+        {
+            uint64_t now = _lthread_usec_now();
+            fprintf(stderr, "req/s: %llu\n", (now - start_time) / 1000);
+            start_time = now;
+        }
     }
 }
 
