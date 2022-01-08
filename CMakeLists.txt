@@ -26,8 +26,6 @@ target_link_libraries(
 install(TARGETS lthread DESTINATION lib)
 install(FILES src/lthread.h DESTINATION include)
 
-set(UNIT_TEST_PATH ${CMAKE_SOURCE_DIR}/tests)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${UNIT_TEST_PATH})
 include_directories(src)
 
 add_executable(lthread_sleep tests/lthread_sleep.c)
@@ -52,7 +50,7 @@ add_executable(webserver examples/webserver.c)
 target_link_libraries(webserver lthread)
 
 enable_testing()
-add_test(lthread_sleep ${UNIT_TEST_PATH}/lthread_sleep)
-add_test(lthread_join ${UNIT_TEST_PATH}/lthread_join)
-add_test(lthread_join ${UNIT_TEST_PATH}/bench)
+add_test(lthread_sleep lthread_sleep)
+add_test(lthread_join lthread_join)
+add_test(lthread_join bench)
 #add_test(lthread_join ${UNIT_TEST_PATH}/test_poller)
