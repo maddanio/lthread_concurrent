@@ -150,7 +150,7 @@ void _lthread_sched_push_ready(
     lthread_sched_t* sched,
     lthread_t* lt
 );
-void _lthread_resched(struct lthread *lt);
+void _lthread_desched_event(struct lthread *lt);
 void _lthread_wakeup(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
@@ -176,14 +176,5 @@ static inline uint64_t _lthread_usec_now(void)
     assert(err == 0);
     return (t.tv_sec * 1000000) + t.tv_usec;
 }
-
-static inline uint64_t _lthread_nsec_now(void)
-{
-    struct timeval t;
-    int err = gettimeofday(&t, NULL);
-    assert(err == 0);
-    return (t.tv_sec * 1000000000) + t.tv_usec;
-}
-
 
 #endif

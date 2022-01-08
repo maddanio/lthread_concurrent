@@ -64,14 +64,18 @@ static uint64_t _lthread_min_timeout(struct lthread_sched *);
 static void _lthread_schedule_expired(struct lthread_sched *sched);
 static inline int _lthread_sleep_cmp(struct lthread *l1, struct lthread *l2);
 typedef enum {
-    lthread_trace_evt_spawn,
-    lthread_trace_evt_yield,
-    lthread_trace_evt_resume
+    lthread_trace_evt_spawn = 0,
+    lthread_trace_evt_exit = 1,
+    lthread_trace_evt_yield = 2,
+    lthread_trace_evt_resume = 3,
+    lthread_trace_evt_begin_wait = 4,
+    lthread_trace_evt_end_wait = 5
 } lthread_trace_event_t;
 
 static inline struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id);
 static inline void* _lthread_run_sched(void* sched);
-static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthread, lthread_trace_event_t event);
+static inline void _lthread_trace_event(lthread_t* lthread, lthread_trace_event_t event);
+static inline void _lthread_trace_event_unsafe(lthread_t* lt, lthread_trace_event_t event);
 static inline struct lthread* _lthread_sched_pop_ready(lthread_sched_t* sched, bool block);
 static inline void _lthread_sched_wake(lthread_sched_t* sched);
 static inline void _lthread_sched_wake_unsafe(lthread_sched_t* sched);
@@ -159,7 +163,7 @@ int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
     lt->is_running = false;
     lt->is_blocked = false;
     lt->ctx = make_fcontext(lt->stack + lt->stack_size, lt->stack_size, &_exec);
-    _lthread_trace_event(sched, lt, lthread_trace_evt_spawn);
+    _lthread_trace_event(lt, lthread_trace_evt_spawn);
     _lthread_push_ready(lt);
     *new_lt = lt;
     return 0;
@@ -213,7 +217,7 @@ void _lthread_yield()
 {
     struct lthread* lt = lthread_current();
     assert(lt->sched == _lthread_curent_sched);
-    _lthread_trace_event(lt->sched, lt, lthread_trace_evt_yield);
+    _lthread_trace_event(lt, lthread_trace_evt_yield);
     lt->sp = __builtin_frame_address(0);
     _switch(&lt->sched->ctx, &lt->ctx);
 }
@@ -221,7 +225,7 @@ void _lthread_yield()
 void _lthread_resume(struct lthread *lt)
 {
     assert(lt->sched == _lthread_curent_sched);
-    _lthread_trace_event(lt->sched, lt, lthread_trace_evt_resume);
+    _lthread_trace_event(lt, lthread_trace_evt_resume);
     lthread_sched_t* sched = lt->sched;
     lthread_mutex_lock(&lt->sched->mutex);
     sched->current_lthread = lt;
@@ -241,6 +245,7 @@ void _lthread_resume(struct lthread *lt)
     }
     else if (lt->state & BIT(LT_ST_EXITED))
     {
+        _lthread_trace_event_unsafe(lt, lthread_trace_evt_exit);
         _lthread_free(lt);
     }
     lthread_mutex_unlock(&sched->mutex);
@@ -295,7 +300,7 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     char trace_name[128];
     snprintf(trace_name, 128, "scheduler%03zu.lrt", id);
     new_sched->trace_fd = open(trace_name, O_RDWR | O_CREAT, (mode_t)0600);
-    new_sched->trace_size = 1 << 20;
+    new_sched->trace_size = 1 << 26;
     lseek(new_sched->trace_fd, new_sched->trace_size - 1, SEEK_SET);
     write(new_sched->trace_fd, "", 1);
     new_sched->trace_ptr = mmap(0, new_sched->trace_size, PROT_WRITE, MAP_SHARED, new_sched->trace_fd, 0);
@@ -305,9 +310,10 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     return new_sched;
 }
 
-void _lthread_resched(struct lthread *lt)
+void _lthread_desched_event(struct lthread *lt)
 {
     lthread_sched_t* sched = lt->sched;
+    _lthread_trace_event(lt, lthread_trace_evt_end_wait);
     lthread_mutex_lock(&sched->mutex);
     if (lt->sched->current_lthread == lt)
     {
@@ -444,6 +450,7 @@ void _lthread_sched_event(
     enum lthread_event e
 )
 {
+    _lthread_trace_event(lt, lthread_trace_evt_begin_wait);
     lthread_poller_schedule_event(
         &lt->sched->pool->poller,
         lt,
@@ -662,22 +669,37 @@ static inline void _lthread_trace_data(lthread_sched_t* sched, const void* ptr, 
 {
     if (sched->trace_offset + size <= sched->trace_size)
     {
-        memcpy(sched->trace_ptr, ptr, size);
+        memcpy(sched->trace_ptr + sched->trace_offset, ptr, size);
         sched->trace_offset += size;
+    }
+    else
+    {
+        fprintf(stderr, "trace buffer exhausted\n");
     }
 }
 #endif
 
-static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthread, lthread_trace_event_t event)
+static inline void _lthread_trace_event_unsafe(lthread_t* lt, lthread_trace_event_t event)
 {
 #if LTHREAD_TRACE
-    uint32_t ievent = (uint32_t)event;
-    uint64_t now = _lthread_nsec_now();
-    _lthread_trace_data(sched, &sched->id, sizeof(sched->id));
-    _lthread_trace_data(sched, &lthread, sizeof(lthread_t*));
+    assert(lt);
+    lthread_sched_t* sched = lt->sched;
+    uint8_t ievent = (uint8_t)event;
+    uint64_t now = _lthread_usec_now();
+    _lthread_trace_data(sched, &lt, sizeof(lthread_t*));
     _lthread_trace_data(sched, &now, sizeof(now));
     _lthread_trace_data(sched, &ievent, sizeof(ievent));
-    *(size_t*)sched->trace_ptr = 0;
+    *(size_t*)(sched->trace_ptr + sched->trace_offset) = 0;
+#endif
+}
+
+static inline void _lthread_trace_event(lthread_t* lt, lthread_trace_event_t event)
+{
+#if LTHREAD_TRACE
+    lthread_sched_t* sched = lt->sched;
+    lthread_mutex_lock(&sched->mutex);
+    _lthread_trace_event_unsafe(lt, event);
+    lthread_mutex_unlock(&sched->mutex);
 #endif
 }
 

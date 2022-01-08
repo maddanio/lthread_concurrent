@@ -62,7 +62,6 @@ typedef struct lthread_poller {
     int                 eventfd;
 #endif
     POLL_EVENT_TYPE     eventlist[LT_MAX_EVENTS];
-    int                 num_new_events;
     lthread_mutex_t     mutex;
     lthread_rb_wait_t   waiting;
     lthread_os_thread_t thread;

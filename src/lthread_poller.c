@@ -132,7 +132,6 @@ static inline bool lthread_poller_poll(
     lthread_poller_t* poller
 )
 {
-    poller->num_new_events = 0;
     int num_events;
     do
         num_events = _lthread_poller_poll(poller, 0);
@@ -153,6 +152,7 @@ static inline bool lthread_poller_poll(
     }
     else
     {
+        fprintf(stderr, "poller done\n");
         return false;
     }
 }
@@ -185,7 +185,7 @@ static inline struct lthread* _lthread_poller_handle_event(
                 lt->state &= CLEARBIT(LT_EV_WRITE);
                 break;
         }
-        _lthread_resched(lt);
+        _lthread_desched_event(lt);
         lthread_mutex_lock(&poller->mutex);
         --poller->num_pending_events;
         lthread_mutex_unlock(&poller->mutex);
