@@ -231,9 +231,9 @@ static inline uint32_t fd_key(struct lthread *lt)
 {
     uint32_t result = (uint16_t)lt->fd_wait;
     if (lt->state & BIT(LT_ST_WAIT_READ))
-        result |= ((uint64_t)LT_EV_READ) << 16;
+        result |= ((uint32_t)LT_EV_READ) << 16;
     else
-        result |= ((uint64_t)LT_EV_WRITE) << 16;
+        result |= ((uint32_t)LT_EV_WRITE) << 16;
     return result;
 }
 
