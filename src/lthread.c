@@ -78,6 +78,7 @@ static inline void _lthread_sched_wake_unsafe(lthread_sched_t* sched);
 static inline int _lthread_sched_isdone(lthread_sched_t* sched);
 static void _exec(intptr_t ltp);
 
+
 static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool);
 
 RB_GENERATE(lthread_rb_sleep, lthread, sleep_node, _lthread_sleep_cmp);
@@ -364,7 +365,7 @@ _lthread_sched_isdone(struct lthread_sched *sched)
 {
     return (
         RB_EMPTY(&sched->sleeping) &&
-        !_lthread_has_ready(sched)
+        TAILQ_EMPTY(&sched->ready)
     );
 }
 
@@ -671,9 +672,10 @@ static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthre
 {
 #if LTHREAD_TRACE
     uint32_t ievent = (uint32_t)event;
+    uint64_t now = _lthread_nsec_now();
     _lthread_trace_data(sched, &sched->id, sizeof(sched->id));
     _lthread_trace_data(sched, &lthread, sizeof(lthread_t*));
-    _lthread_trace_data(sched, &lthread->trace_cnt, sizeof(lthread->trace_cnt));
+    _lthread_trace_data(sched, &now, sizeof(now));
     _lthread_trace_data(sched, &ievent, sizeof(ievent));
     *(size_t*)sched->trace_ptr = 0;
     ++lthread->trace_cnt;

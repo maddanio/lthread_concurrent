@@ -46,7 +46,7 @@
 #define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
 
-#define LTHREAD_TRACE 1
+#define LTHREAD_TRACE 0
 
 #define BIT(x) (1 << (x))
 #define CLEARBIT(x) ~(1 << (x))
@@ -94,10 +94,6 @@ struct lthread {
     nfds_t nfds;
 
     bool needs_resched;
-
-#if LTHREAD_TRACE
-    size_t trace_cnt;
-#endif
 };
 
 RB_HEAD(lthread_rb_sleep, lthread);
@@ -173,21 +169,20 @@ static inline struct lthread_sched* _lthread_get_sched()
     return _lthread_curent_sched;
 }
 
-static inline uint64_t _lthread_diff_usecs(uint64_t t1, uint64_t t2)
-{
-    return (t2 - t1);
-}
-
 static inline uint64_t _lthread_usec_now(void)
 {
-    struct timeval t1 = {0, 0};
-    gettimeofday(&t1, NULL);
-    return (t1.tv_sec * 1000000) + t1.tv_usec;
+    struct timeval t;
+    int err = gettimeofday(&t, NULL);
+    assert(err == 0);
+    return (t.tv_sec * 1000000) + t.tv_usec;
 }
 
-static inline bool _lthread_has_ready(struct lthread_sched *sched)
+static inline uint64_t _lthread_nsec_now(void)
 {
-    return !TAILQ_EMPTY(&sched->ready);
+    struct timeval t;
+    int err = gettimeofday(&t, NULL);
+    assert(err == 0);
+    return (t.tv_sec * 1000000000) + t.tv_usec;
 }
 
 
