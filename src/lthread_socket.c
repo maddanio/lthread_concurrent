@@ -60,7 +60,7 @@ x {                                                         \
         if (ret == -1 && errno != EAGAIN)                   \
             return (-1);                                    \
         if ((ret == -1 && errno == EAGAIN)) {               \
-            _lthread_sched_event(lt, fd, LT_EV_READ);       \
+            _lthread_wait_fd(lt, fd, LT_EV_READ);       \
         }                                                   \
         if (ret >= 0)                                       \
             return (ret);                                   \
@@ -83,7 +83,7 @@ x {                                                         \
         if (ret == -1 && errno != EAGAIN)                   \
             return (-1);                                    \
         if ((ret == -1 && errno == EAGAIN)) {               \
-            _lthread_sched_event(lt, fd, LT_EV_READ);       \
+            _lthread_wait_fd(lt, fd, LT_EV_READ);       \
         }                                                   \
     }                                                       \
     return (recvd);                                         \
@@ -106,7 +106,7 @@ x {                                                         \
         if (ret == -1 && errno != EAGAIN)                   \
             return (-1);                                    \
         if (ret == -1 && errno == EAGAIN)                   \
-            _lthread_sched_event(lt, fd, LT_EV_WRITE);      \
+            _lthread_wait_fd(lt, fd, LT_EV_WRITE);      \
     }                                                       \
     return (sent);                                          \
 }                                                           \
@@ -124,7 +124,7 @@ x {                                                         \
         if (ret == -1 && errno != EAGAIN)                   \
             return (-1);                                    \
         if (ret == -1 && errno == EAGAIN)                   \
-            _lthread_sched_event(lt, fd, LT_EV_WRITE);      \
+            _lthread_wait_fd(lt, fd, LT_EV_WRITE);      \
     }                                                       \
 }                                                           \
 
@@ -139,7 +139,7 @@ int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
             (errno == ENFILE || 
             errno == EWOULDBLOCK ||
             errno == EMFILE)) {
-            _lthread_sched_event(lt, fd, LT_EV_READ);
+            _lthread_wait_fd(lt, fd, LT_EV_READ);
             continue;
         }
 
@@ -331,7 +331,7 @@ int lthread_connect(int fd, struct sockaddr *name, socklen_t namelen)
         if (ret == -1 && (errno == EAGAIN || 
             errno == EWOULDBLOCK ||
             errno == EINPROGRESS)) {
-            _lthread_sched_event(lt, fd, LT_EV_WRITE);
+            _lthread_wait_fd(lt, fd, LT_EV_WRITE);
             continue;
         } else {
             break;
@@ -363,7 +363,7 @@ ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt)
                 }
             }
         } else if (-1 == n && EAGAIN == errno) {
-            _lthread_sched_event(lt, fd, LT_EV_WRITE);
+            _lthread_wait_fd(lt, fd, LT_EV_WRITE);
         } else {
             return (n);
         }
@@ -394,7 +394,7 @@ int lthread_sendfile(
         if (ret == -1)
         {
             if (errno == EAGAIN)
-                _lthread_sched_event(lt, s, LT_EV_WRITE);
+                _lthread_wait_fd(lt, s, LT_EV_WRITE);
             else
                 return -1;
         }

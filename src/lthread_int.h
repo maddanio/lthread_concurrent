@@ -155,7 +155,7 @@ void _lthread_wakeup(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-void _lthread_sched_event(
+void _lthread_wait_fd(
     struct lthread *lt,
     int fd,
     enum lthread_event e

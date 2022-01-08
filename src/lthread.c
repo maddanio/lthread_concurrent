@@ -444,7 +444,7 @@ static inline void* _lthread_run_sched(void* schedp)
  * When the event occurs, the state is cleared and node is removed by
  * _lthread_desched_event() called from lthread_run().
  */
-void _lthread_sched_event(
+void _lthread_wait_fd(
     struct lthread *lt,
     int fd,
     enum lthread_event e
