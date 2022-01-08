@@ -322,8 +322,8 @@ void _lthread_desched_event(struct lthread *lt)
     else
     {
         TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
+        _lthread_sched_wake_unsafe(lt->sched);
     }
-    _lthread_sched_wake_unsafe(lt->sched);
     lthread_mutex_unlock(&sched->mutex);
 }
 
