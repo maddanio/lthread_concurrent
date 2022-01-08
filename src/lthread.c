@@ -109,7 +109,7 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     lthread_sched_t** schedulers = (lthread_sched_t**)calloc(num_schedulers, sizeof(lthread_sched_t*));
     for (size_t i = 0; i < num_schedulers; ++i)
     {
-        schedulers[i] = _lthread_sched_create(stack_size, i);
+        schedulers[i] = _lthread_sched_create(stack_size, i + 1);
     }
     lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
 
@@ -290,7 +290,7 @@ struct lthread_sched* _lthread_sched_create(size_t stack_size, size_t id)
     new_sched->mutex = lthread_mutex_create();
     new_sched->cond = lthread_os_cond_create();
     new_sched->stack_size = stack_size;
-    new_sched->id = id + 1;
+    new_sched->id = id;
 #if LTHREAD_TRACE
     char trace_name[128];
     snprintf(trace_name, 128, "scheduler%03zu.lrt", id);
@@ -678,7 +678,6 @@ static inline void _lthread_trace_event(lthread_sched_t* sched, lthread_t* lthre
     _lthread_trace_data(sched, &now, sizeof(now));
     _lthread_trace_data(sched, &ievent, sizeof(ievent));
     *(size_t*)sched->trace_ptr = 0;
-    ++lthread->trace_cnt;
 #endif
 }
 
