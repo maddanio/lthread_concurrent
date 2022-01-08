@@ -20,3 +20,4 @@ src/.libs
 build*
 /.cache
 /compile_commands.json
+/build
