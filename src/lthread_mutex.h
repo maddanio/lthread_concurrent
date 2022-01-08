@@ -63,16 +63,20 @@ static inline void lthread_os_cond_wait(
     int err;
     if (timeout_usec)
     {
-        struct timespec t = {0, 0};
-        t.tv_sec =  timeout_usec / 1000000u;
-        t.tv_nsec  =  (timeout_usec % 1000000u)  * 1000u;
+        struct timespec t = {
+            .tv_sec = (time_t)(timeout_usec / 1000000u),
+            .tv_nsec = (long)((timeout_usec % 1000000u)  * 1000u)
+        };
         err = pthread_cond_timedwait(cond, mutex, &t);
+        if (err == ETIMEDOUT)
+            return;
+        assert(err == 0);
     }
     else
     {
         err = pthread_cond_wait(cond, mutex);
+        assert(err == 0);
     }
-    assert(err == 0);
 }
 
 static inline void lthread_os_cond_signal(
