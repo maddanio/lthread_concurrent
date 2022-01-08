@@ -79,7 +79,7 @@ struct lthread {
     size_t                  last_stack_size; /* last yield  stack_size */
     enum lthread_st         state;          /* current lthread state */
     struct lthread_sched    *sched;         /* scheduler lthread belongs to */
-    int64_t                 fd_wait;        /* fd we are waiting on */
+    int16_t                 fd_wait;        /* fd we are waiting on */
     void                    *stack;         /* ptr to lthread_stack */
     void                    *sp;            /* ptr to last stack ptr */
     uint64_t                sleep_usecs;    /* until when lthread is sleeping */

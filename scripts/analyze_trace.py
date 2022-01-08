@@ -16,7 +16,8 @@ def read_event(f : BinaryIO) -> Optional[trace_event_t]:
         return None
     timestamp = struct.unpack('Q', f.read(8))[0]
     event = struct.unpack('B', f.read(1))[0]
-    result = [timestamp, lthread, event]
+    fd = struct.unpack('h', f.read(2))[0]
+    result = [timestamp, lthread, event, fd]
     return result
 
 

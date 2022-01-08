@@ -664,6 +664,17 @@ static inline struct lthread* _lthread_sched_pop_ready(
     return result;
 }
 
+void _lthread_pool_push_ready(
+    lthread_pool_state_t* pool,
+    lthread_t* lt
+)
+{
+    _lthread_sched_push_ready(
+        _lthread_pool_get_next(pool),
+        lt
+    );
+}
+
 #if LTHREAD_TRACE
 static inline void _lthread_trace_data(lthread_sched_t* sched, const void* ptr, size_t size)
 {
@@ -679,20 +690,6 @@ static inline void _lthread_trace_data(lthread_sched_t* sched, const void* ptr, 
 }
 #endif
 
-static inline void _lthread_trace_event_unsafe(lthread_t* lt, lthread_trace_event_t event)
-{
-#if LTHREAD_TRACE
-    assert(lt);
-    lthread_sched_t* sched = lt->sched;
-    uint8_t ievent = (uint8_t)event;
-    uint64_t now = _lthread_usec_now();
-    _lthread_trace_data(sched, &lt, sizeof(lthread_t*));
-    _lthread_trace_data(sched, &now, sizeof(now));
-    _lthread_trace_data(sched, &ievent, sizeof(ievent));
-    *(size_t*)(sched->trace_ptr + sched->trace_offset) = 0;
-#endif
-}
-
 static inline void _lthread_trace_event(lthread_t* lt, lthread_trace_event_t event)
 {
 #if LTHREAD_TRACE
@@ -703,15 +700,19 @@ static inline void _lthread_trace_event(lthread_t* lt, lthread_trace_event_t eve
 #endif
 }
 
-void _lthread_pool_push_ready(
-    lthread_pool_state_t* pool,
-    lthread_t* lt
-)
+static inline void _lthread_trace_event_unsafe(lthread_t* lt, lthread_trace_event_t event)
 {
-    _lthread_sched_push_ready(
-        _lthread_pool_get_next(pool),
-        lt
-    );
+#if LTHREAD_TRACE
+    assert(lt);
+    lthread_sched_t* sched = lt->sched;
+    uint8_t ievent = (uint8_t)event;
+    uint64_t now = _lthread_usec_now();
+    _lthread_trace_data(sched, &lt, sizeof(lthread_t*));
+    _lthread_trace_data(sched, &now, sizeof(now));
+    _lthread_trace_data(sched, &ievent, sizeof(ievent));
+    _lthread_trace_data(sched, &lt->fd_wait, sizeof(lt->fd_wait));
+    *(size_t*)(sched->trace_ptr + sched->trace_offset) = 0;
+#endif
 }
 
 static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool)

@@ -43,8 +43,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
-
 static inline struct lthread* _lthread_poller_handle_event(
     lthread_poller_t* poller,
     int fd,
@@ -110,7 +108,7 @@ void lthread_poller_schedule_event(
         (lt->state & BIT(LT_ST_WAIT_WRITE)) == 0
     );
     lthread_mutex_lock(&poller->mutex);
-    lt->fd_wait = FD_KEY(fd, e);
+    lt->fd_wait = fd;
     struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
     assert(lt_tmp == NULL);
     ++poller->num_pending_events;
@@ -185,6 +183,7 @@ static inline struct lthread* _lthread_poller_handle_event(
                 lt->state &= CLEARBIT(LT_EV_WRITE);
                 break;
         }
+        lt->fd_wait = -1;
         _lthread_desched_event(lt);
         lthread_mutex_lock(&poller->mutex);
         --poller->num_pending_events;
@@ -206,12 +205,21 @@ static inline struct lthread* _lthread_poller_handle_event(
 static inline lthread_t* _lthread_poller_desched_event(
     lthread_poller_t* poller,
     int fd,
-    enum lthread_event e
+    enum lthread_event ev
 )
 {
     lthread_mutex_lock(&poller->mutex);
     lthread_t find_lt;
-    find_lt.fd_wait = FD_KEY(fd, e);
+    find_lt.fd_wait = fd;
+    switch(ev)
+    {
+        case LT_EV_READ:
+            find_lt.state = BIT(LT_ST_WAIT_READ);
+            break;
+        case LT_EV_WRITE:
+            find_lt.state = BIT(LT_EV_WRITE);
+            break;
+    }
     lthread_t* lt = RB_FIND(lthread_rb_wait, &poller->waiting, &find_lt);
     if (lt)
         RB_REMOVE(lthread_rb_wait, &poller->waiting, lt);
@@ -219,11 +227,23 @@ static inline lthread_t* _lthread_poller_desched_event(
     return lt;
 }
 
+static inline uint32_t fd_key(struct lthread *lt)
+{
+    uint32_t result = (uint16_t)lt->fd_wait;
+    if (lt->state & BIT(LT_ST_WAIT_READ))
+        result |= ((uint64_t)LT_EV_READ) << 16;
+    else
+        result |= ((uint64_t)LT_EV_WRITE) << 16;
+    return result;
+}
+
 static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2)
 {
-    if (l1->fd_wait < l2->fd_wait)
+    uint32_t key1 = fd_key(l1);
+    uint32_t key2 = fd_key(l2);
+    if (key1 < key2)
         return -1;
-    else if (l1->fd_wait == l2->fd_wait)
+    else if (key1 == key2)
         return 0;
     else
         return 1;
