@@ -54,6 +54,17 @@ static inline lthread_t* _lthread_poller_desched_event(
     int fd,
     enum lthread_event e
 );
+static inline void _lthread_poller_add_waiting_lthread(
+    lthread_poller_t* poller,
+    lthread_t* lt,
+    int fd,
+    enum lthread_event e
+);
+static inline void _lthread_poller_register_event(
+    lthread_poller_t* poller,
+    int fd,
+    enum lthread_event e
+);
 static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
 static inline void* _lthread_poller_threadfun(void* arg);
 
@@ -103,24 +114,49 @@ void lthread_poller_schedule_event(
     enum lthread_event e
 )
 {
+    _lthread_poller_add_waiting_lthread(poller, lt, fd, e);
+    _lthread_poller_register_event(poller, fd, e);
+}
+
+static inline void _lthread_poller_add_waiting_lthread(
+    lthread_poller_t* poller,
+    lthread_t* lt,
+    int fd,
+    enum lthread_event e
+)
+{
+    lthread_mutex_lock(&poller->mutex);
     assert(
         (lt->state & BIT(LT_ST_WAIT_READ)) == 0 &&
         (lt->state & BIT(LT_ST_WAIT_WRITE)) == 0
     );
-    lthread_mutex_lock(&poller->mutex);
-    lt->fd_wait = fd;
-    struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
-    assert(lt_tmp == NULL);
-    ++poller->num_pending_events;
-    lthread_mutex_unlock(&poller->mutex);
     switch(e)
     {
         case LT_EV_READ:
             lt->state |= BIT(LT_ST_WAIT_READ);
-            lthread_poller_ev_register_rd(poller, fd);
             break;
         case LT_EV_WRITE:
             lt->state |= BIT(LT_ST_WAIT_WRITE);
+            break;
+    }
+    struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
+    assert(lt_tmp == NULL);
+    ++poller->num_pending_events;
+    lthread_mutex_unlock(&poller->mutex);
+}
+
+static inline void _lthread_poller_register_event(
+    lthread_poller_t* poller,
+    int fd,
+    enum lthread_event e
+)
+{
+    switch(e)
+    {
+        case LT_EV_READ:
+            lthread_poller_ev_register_rd(poller, fd);
+            break;
+        case LT_EV_WRITE:
             lthread_poller_ev_register_wr(poller, fd);
             break;
     }
@@ -174,30 +210,10 @@ static inline struct lthread* _lthread_poller_handle_event(
     {
         if (is_eof)
             lt->state |= BIT(LT_ST_FDEOF);
-        switch(ev)
-        {
-            case LT_EV_READ:
-                lt->state &= CLEARBIT(LT_ST_WAIT_READ);
-                break;
-            case LT_EV_WRITE:
-                lt->state &= CLEARBIT(LT_EV_WRITE);
-                break;
-        }
-        lt->fd_wait = -1;
         _lthread_desched_event(lt);
         lthread_mutex_lock(&poller->mutex);
         --poller->num_pending_events;
         lthread_mutex_unlock(&poller->mutex);
-    }
-    else
-    {
-        switch(ev)
-        {
-            case LT_EV_READ:
-                break;
-            case LT_EV_WRITE:
-                break;
-        }
     }
     return lt;
 }
@@ -222,7 +238,19 @@ static inline lthread_t* _lthread_poller_desched_event(
     }
     lthread_t* lt = RB_FIND(lthread_rb_wait, &poller->waiting, &find_lt);
     if (lt)
+    {
         RB_REMOVE(lthread_rb_wait, &poller->waiting, lt);
+        switch(ev)
+        {
+            case LT_EV_READ:
+                lt->state &= CLEARBIT(LT_ST_WAIT_READ);
+                break;
+            case LT_EV_WRITE:
+                lt->state &= CLEARBIT(LT_EV_WRITE);
+                break;
+        }
+        lt->fd_wait = -1;
+    }
     lthread_mutex_unlock(&poller->mutex);
     return lt;
 }

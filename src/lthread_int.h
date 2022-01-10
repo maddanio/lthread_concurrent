@@ -61,7 +61,9 @@ TAILQ_HEAD(lthread_q, lthread);
 typedef void (*lthread_func)(void *);
 
 typedef fcontext_t cpu_ctx_t;
-
+// should be enum ready, running, sleeping, blocked, wait_read, wait_write,
+// - expired is not needed anymore
+// - eof needs to be communicated another way
 enum lthread_st {
     LT_ST_WAIT_READ,    /* lthread waiting for READ on socket */
     LT_ST_WAIT_WRITE,   /* lthread waiting for WRITE on socket */
@@ -155,8 +157,7 @@ void _lthread_wakeup(struct lthread *lt);
 void _lthread_sched_free();
 void _lthread_desched_sleep(struct lthread *lt);
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs);
-void _lthread_wait_fd(
-    struct lthread *lt,
+int _lthread_wait_fd(
     int fd,
     enum lthread_event e
 );

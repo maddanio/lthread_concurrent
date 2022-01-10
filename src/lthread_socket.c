@@ -48,42 +48,44 @@
     #define FLAG | MSG_NOSIGNAL
 #endif
 
+static inline int _lthread_unblock_fd(int fd);
 
 #define LTHREAD_RECV(x, y)                                  \
 x {                                                         \
-    ssize_t ret = 0;                                        \
-    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
-    while (1) {                                             \
-        if (lt->state & BIT(LT_ST_FDEOF))                   \
-            return (-1);                                    \
+    ssize_t ret = -1;                                       \
+    while (ret < 0) {                                       \
         ret = y;                                            \
-        if (ret == -1 && errno != EAGAIN)                   \
-            return (-1);                                    \
-        if ((ret == -1 && errno == EAGAIN)) {               \
-            _lthread_wait_fd(lt, fd, LT_EV_READ);       \
+        if (ret == -1)                                      \
+        {                                                   \
+            if (errno == EAGAIN) {                          \
+                if (_lthread_wait_fd(fd, LT_EV_READ) == -1) \
+                    return -1;                              \
+            } else {                                        \
+                return -1;                                  \
+            }                                               \
         }                                                   \
-        if (ret >= 0)                                       \
-            return (ret);                                   \
     }                                                       \
+    return (ret);                                           \
 }                                                           \
 
 #define LTHREAD_RECV_EXACT(x, y)                            \
 x {                                                         \
     ssize_t ret = 0;                                        \
     ssize_t recvd = 0;                                      \
-    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
     while (recvd != length) {                               \
-        if (lt->state & BIT(LT_ST_FDEOF))                   \
-            return (-1);                                    \
         ret = y;                                            \
-        if (ret == 0)                                       \
-            return (recvd);                                 \
         if (ret > 0)                                        \
             recvd += ret;                                   \
-        if (ret == -1 && errno != EAGAIN)                   \
-            return (-1);                                    \
-        if ((ret == -1 && errno == EAGAIN)) {               \
-            _lthread_wait_fd(lt, fd, LT_EV_READ);       \
+        else if (ret == 0)                                  \
+            break;                                          \
+        else                                                \
+        {                                                   \
+            if (errno == EAGAIN) {                          \
+                if (_lthread_wait_fd(fd, LT_EV_READ) == -1) \
+                    return -1;                              \
+            } else {                                        \
+                return -1;                                  \
+            }                                               \
         }                                                   \
     }                                                       \
     return (recvd);                                         \
@@ -92,81 +94,72 @@ x {                                                         \
 
 #define LTHREAD_SEND(x, y)                                  \
 x {                                                         \
-    ssize_t ret = 0;                                        \
-    ssize_t sent = 0;                                       \
-    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
-    while (sent != length) {                                \
-        if (lt->state & BIT(LT_ST_FDEOF))                   \
-            return (-1);                                    \
+    ssize_t ret = -1;                                       \
+    while (ret < 0) {                                       \
         ret = y;                                            \
-        if (ret == 0)                                       \
-            return (sent);                                  \
-        if (ret > 0)                                        \
-            sent += ret;                                    \
-        if (ret == -1 && errno != EAGAIN)                   \
-            return (-1);                                    \
-        if (ret == -1 && errno == EAGAIN)                   \
-            _lthread_wait_fd(lt, fd, LT_EV_WRITE);      \
+        if (ret == -1) {                                    \
+            if (errno == EAGAIN) {                          \
+                if (_lthread_wait_fd(fd, LT_EV_WRITE) == -1)\
+                    return -1;                              \
+            } else {                                        \
+                return -1;                                  \
+            }                                               \
+        }                                                   \
     }                                                       \
-    return (sent);                                          \
+    return ret;                                             \
 }                                                           \
 
-#define LTHREAD_SEND_ONCE(x, y)                             \
+#define LTHREAD_SEND_EXACT(x, y)                            \
 x {                                                         \
     ssize_t ret = 0;                                        \
-    struct lthread *lt = _lthread_get_sched()->current_lthread;   \
-    while (1) {                                             \
-        if (lt->state & BIT(LT_ST_FDEOF))                   \
-            return (-1);                                    \
+    ssize_t sent = 0;                                       \
+    while (sent != length) {                                \
         ret = y;                                            \
-        if (ret >= 0)                                       \
-            return (ret);                                   \
-        if (ret == -1 && errno != EAGAIN)                   \
-            return (-1);                                    \
-        if (ret == -1 && errno == EAGAIN)                   \
-            _lthread_wait_fd(lt, fd, LT_EV_WRITE);      \
+        if (ret == -1) {                                    \
+            if (errno == EAGAIN) {                          \
+                if (_lthread_wait_fd(fd, LT_EV_WRITE) == -1)\
+                    return -1;                              \
+            } else {                                        \
+                return -1;                                  \
+            }                                               \
+        } else if (ret == 0) {                              \
+            break;                                          \
+        } else {                                            \
+            sent += ret;                                    \
+        }                                                   \
     }                                                       \
+    return sent;                                            \
 }                                                           \
 
 int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
 {
     int ret = -1;
-    struct lthread *lt = _lthread_get_sched()->current_lthread;
-
-    while (1) {
+    while (ret <= 0)
+    {
         ret = accept(fd, addr, len);
-        if (ret == -1 && 
-            (errno == ENFILE || 
-            errno == EWOULDBLOCK ||
-            errno == EMFILE)) {
-            _lthread_wait_fd(lt, fd, LT_EV_READ);
-            continue;
+        if (ret == -1)
+        {
+            switch (errno)
+            {
+                case ENFILE:
+                case EWOULDBLOCK:
+                case EMFILE:
+                    _lthread_wait_fd(fd, LT_EV_READ);
+                    break;
+                case ECONNABORTED:
+                    perror("connection accept aborted");
+                    break;
+                default:
+                    perror("Cannot accept connection");
+                    return -1;
+            }
         }
-
-        if (ret > 0)
-            break;
-
-        if (ret == -1 && errno == ECONNABORTED)  {
-            perror("Cannot accept connection");
-            continue;
-        }
-
-        if (ret == -1 && errno != EWOULDBLOCK) {
-            perror("Cannot accept connection");
-            return (-1);
-        }
-
     }
-
 #ifndef __FreeBSD__
-    if ((fcntl(ret, F_SETFL, O_NONBLOCK)) == -1) {
-        close(ret);
-        perror("Failed to set socket properties");
-        return (-1);
-    }
+    if (_lthread_unblock_fd(ret) == -1)
+        return -1;
 #endif
-
-    return (ret);
+    return ret;
 }
 
 int lthread_close(int fd)
@@ -186,11 +179,8 @@ int lthread_socket(int domain, int type, int protocol)
         return (-1);
     }
 
-    if ((fcntl(fd, F_SETFL, O_NONBLOCK)) == -1) {
-        close(fd);
-        perror("Failed to set socket properties");
-        return (-1);
-    }
+    if (_lthread_unblock_fd(fd) == -1)
+        return -1;
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
     if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(int)) == -1) {
@@ -237,8 +227,7 @@ lthread_readline(int fd, char **buf, size_t max, uint64_t timeout)
     return (total_read);
 }
 
-int
-lthread_pipe(int fildes[2])
+int lthread_pipe(int fildes[2])
 {
     int ret = 0;
 
@@ -297,22 +286,22 @@ LTHREAD_RECV(
     recvfrom(fd, buf, length, flags FLAG, address, address_len)
 )
 
-LTHREAD_SEND(
+LTHREAD_SEND_EXACT(
     ssize_t lthread_send(int fd, const void *buf, size_t length, int flags),
     send(fd, ((char *)buf) + sent, length - sent, flags FLAG)
 )
 
-LTHREAD_SEND(
+LTHREAD_SEND_EXACT(
     ssize_t lthread_write(int fd, const void *buf, size_t length),
     write(fd, ((char *)buf) + sent, length - sent)
 )
 
-LTHREAD_SEND_ONCE(
+LTHREAD_SEND(
     ssize_t lthread_sendmsg(int fd, const struct msghdr *message, int flags),
     sendmsg(fd, message, flags FLAG)
 )
 
-LTHREAD_SEND_ONCE(
+LTHREAD_SEND(
     ssize_t lthread_sendto(int fd, const void *buf, size_t length, int flags,
         const struct sockaddr *dest_addr, socklen_t dest_len),
     sendto(fd, buf, length, flags FLAG, dest_addr, dest_len)
@@ -322,8 +311,6 @@ int lthread_connect(int fd, struct sockaddr *name, socklen_t namelen)
 {
 
     int ret = 0;
-    struct lthread *lt = _lthread_get_sched()->current_lthread;
-
     while (1) {
         ret = connect(fd, name, namelen);
         if (ret == 0)
@@ -331,7 +318,7 @@ int lthread_connect(int fd, struct sockaddr *name, socklen_t namelen)
         if (ret == -1 && (errno == EAGAIN || 
             errno == EWOULDBLOCK ||
             errno == EINPROGRESS)) {
-            _lthread_wait_fd(lt, fd, LT_EV_WRITE);
+            _lthread_wait_fd(fd, LT_EV_WRITE);
             continue;
         } else {
             break;
@@ -345,8 +332,6 @@ ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt)
 {
     ssize_t total = 0;
     int iov_index = 0;
-    struct lthread *lt = _lthread_get_sched()->current_lthread;
-
     do {
         ssize_t n = writev(fd, iov + iov_index, iovcnt - iov_index);
         if (n > 0) {
@@ -363,13 +348,27 @@ ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt)
                 }
             }
         } else if (-1 == n && EAGAIN == errno) {
-            _lthread_wait_fd(lt, fd, LT_EV_WRITE);
+            _lthread_wait_fd(fd, LT_EV_WRITE);
         } else {
             return (n);
         }
     } while (iov_index < iovcnt);
 
     return (total);
+}
+
+static inline int _lthread_unblock_fd(int fd)
+{
+    if ((fcntl(fd, F_SETFL, O_NONBLOCK)) == -1)
+    {
+        close(fd);
+        perror("Failed to set socket properties");
+        return (-1);
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 #ifdef __FreeBSD__

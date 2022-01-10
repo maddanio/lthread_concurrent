@@ -444,12 +444,12 @@ static inline void* _lthread_run_sched(void* schedp)
  * When the event occurs, the state is cleared and node is removed by
  * _lthread_desched_event() called from lthread_run().
  */
-void _lthread_wait_fd(
-    struct lthread *lt,
+int _lthread_wait_fd(
     int fd,
     enum lthread_event e
 )
 {
+    struct lthread *lt = _lthread_get_sched()->current_lthread;
     _lthread_trace_event(lt, lthread_trace_evt_begin_wait);
     lthread_poller_schedule_event(
         &lt->sched->pool->poller,
@@ -458,6 +458,15 @@ void _lthread_wait_fd(
         e
     );
     _lthread_yield();
+    if (lt->state & BIT(LT_ST_FDEOF))
+    {
+        lt->state &= CLEARBIT(LT_ST_FDEOF);
+        return -1;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 /*
