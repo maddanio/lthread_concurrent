@@ -46,32 +46,6 @@ _lthread_poller_poll(lthread_poller_t* poller, struct timespec t)
 }
 
 inline void
-lthread_poller_ev_clear_rd(int fd)
-{
-    struct epoll_event ev;
-    int ret = 0;
-    struct lthread_sched *sched = _lthread_get_sched();
-
-    ev.data.fd = fd;
-    ev.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
-    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_DEL, fd, &ev);
-    assert(ret != -1);
-}
-
-inline void
-lthread_poller_ev_clear_wr(int fd)
-{
-    struct epoll_event ev;
-    int ret = 0;
-    struct lthread_sched *sched = _lthread_get_sched();
-
-    ev.data.fd = fd;
-    ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
-    ret = epoll_ctl(poller->poller_fd, EPOLL_CTL_DEL, fd, &ev);
-    assert(ret != -1);
-}
-
-inline void
 lthread_poller_ev_register_rd(int fd)
 {
     struct epoll_event ev;

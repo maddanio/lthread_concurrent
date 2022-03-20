@@ -14,7 +14,7 @@ struct cli_info {
 
 typedef struct cli_info cli_info_t;
 
-char *reply = "HTTP/1.0 200 OK\r\nContent-length: 11\r\n\r\nHello Kannan";
+char *reply = "HTTP/1.0 200 OK\r\nContent-length: 11\r\n\r\nHello Kannan\n\n";
 
 void
 http_serv(void *arg)
@@ -75,7 +75,6 @@ listener(void *arg)
 
     for (size_t i = 0;;++i)
     {
-        /* block until a new connection arrives */
         cli_fd = lthread_accept(lsn_fd, (struct sockaddr*)&peer_addr, &addrlen);
         if (cli_fd == -1) {
             perror("Failed to accept connection");

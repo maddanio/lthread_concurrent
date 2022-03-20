@@ -135,7 +135,7 @@ void bench_lthread_generator()
             else
             {
                 ++count;
-                //fprintf(stderr, "ok %lu == %lu\n", target, *value);
+                fprintf(stderr, "ok %lu == %lu\n", target, *value);
             }
         }
         generator.pull();

@@ -73,6 +73,9 @@ int _lthread_poller_poll(lthread_poller_t* poller, struct timespec* t)
     return result;
 }
 
+//const int16_t io_flags = EV_ADD | EV_ENABLE | EV_ONESHOT;
+const int16_t io_flags = EV_ADD | EV_ENABLE | EV_ONESHOT;
+
 void lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)
 {
     struct kevent change;
@@ -80,7 +83,7 @@ void lthread_poller_ev_register_rd(lthread_poller_t* poller, int fd)
         &change,
         fd,
         EVFILT_READ,
-        EV_ADD | EV_ENABLE | EV_ONESHOT, 
+        io_flags,
         0,
         0,
         0
@@ -95,37 +98,7 @@ void lthread_poller_ev_register_wr(lthread_poller_t* poller, int fd)
         &change,
         fd,
         EVFILT_WRITE,
-        EV_ADD | EV_ENABLE | EV_ONESHOT,
-        0,
-        0,
-        0
-    );
-    assert(kevent(poller->poller_fd, &change, 1, 0, 0, 0) != -1);
-}
-
-void lthread_poller_ev_clear_rd(lthread_poller_t* poller, int fd)
-{
-    struct kevent change;
-    EV_SET(
-        &change,
-        fd,
-        EVFILT_READ,
-        EV_DELETE,
-        0,
-        0,
-        0
-    );
-    assert(kevent(poller->poller_fd, &change, 1, 0, 0, 0) != -1);
-}
-
-void lthread_poller_ev_clear_wr(lthread_poller_t* poller, int fd)
-{
-    struct kevent change;
-    EV_SET(
-        &change,
-        fd,
-        EVFILT_WRITE,
-        EV_DELETE,
+        io_flags,
         0,
         0,
         0

@@ -67,6 +67,7 @@ static inline void _lthread_poller_register_event(
 );
 static inline int _lthread_wait_cmp(struct lthread *l1, struct lthread *l2);
 static inline void* _lthread_poller_threadfun(void* arg);
+static inline uint32_t fd_key(struct lthread *lt);
 
 RB_GENERATE(lthread_rb_wait, lthread, wait_node, _lthread_wait_cmp);
 
@@ -138,7 +139,10 @@ static inline void _lthread_poller_add_waiting_lthread(
         case LT_EV_WRITE:
             lt->state |= BIT(LT_ST_WAIT_WRITE);
             break;
+        default:
+            assert(0);
     }
+    lt->fd_wait = fd;
     struct lthread *lt_tmp = RB_INSERT(lthread_rb_wait, &poller->waiting, lt);
     assert(lt_tmp == NULL);
     ++poller->num_pending_events;
@@ -233,7 +237,7 @@ static inline lthread_t* _lthread_poller_desched_event(
             find_lt.state = BIT(LT_ST_WAIT_READ);
             break;
         case LT_EV_WRITE:
-            find_lt.state = BIT(LT_EV_WRITE);
+            find_lt.state = BIT(LT_ST_WAIT_WRITE);
             break;
     }
     lthread_t* lt = RB_FIND(lthread_rb_wait, &poller->waiting, &find_lt);
@@ -246,7 +250,7 @@ static inline lthread_t* _lthread_poller_desched_event(
                 lt->state &= CLEARBIT(LT_ST_WAIT_READ);
                 break;
             case LT_EV_WRITE:
-                lt->state &= CLEARBIT(LT_EV_WRITE);
+                lt->state &= CLEARBIT(LT_ST_WAIT_WRITE);
                 break;
         }
         lt->fd_wait = -1;

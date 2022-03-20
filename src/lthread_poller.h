@@ -81,8 +81,6 @@ bool lthread_poller_has_pending_events(lthread_poller_t* poller);
 
 void lthread_poller_ev_register_rd(lthread_poller_t*, int fd);
 void lthread_poller_ev_register_wr(lthread_poller_t*, int fd);
-void lthread_poller_ev_clear_wr(lthread_poller_t*, int fd);
-void lthread_poller_ev_clear_rd(lthread_poller_t*, int fd);
 void lthread_poller_ev_register_trigger(lthread_poller_t*);
 void lthread_poller_ev_trigger(lthread_poller_t* poller);
 void lthread_poller_ev_clear_trigger(lthread_poller_t*);
