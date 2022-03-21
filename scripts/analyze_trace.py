@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from io import BufferedReader
 import sys
 import glob

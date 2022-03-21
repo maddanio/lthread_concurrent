@@ -43,8 +43,8 @@ void lthread_cond_lock(struct lthread_cond *c)
     else
     {
         c->owner = self;
-        lthread_mutex_unlock(&c->mutex);
     }
+    lthread_mutex_unlock(&c->mutex);
     //fprintf(stderr, "%p locked %p\n", self, c);
     assert(c->owner == self);
 }
@@ -57,6 +57,7 @@ int lthread_cond_wait(struct lthread_cond *c, uint64_t timeout)
     assert(self == c->owner);
     _lthread_cond_signal(c);
     int result = _lthread_cond_wait_unlock(c, self, timeout);
+    lthread_mutex_unlock(&c->mutex);
     if (result == 0)
         assert(c->owner == self);
     return result;
@@ -93,12 +94,10 @@ static inline int _lthread_cond_wait_unlock(struct lthread_cond *c, lthread_t* s
     {
         TAILQ_REMOVE(&c->blocked_lthreads, self, blocked_next);
         self->is_blocked = false;
-        lthread_mutex_unlock(&c->mutex);
         return -2;
     }
     else
     {
-        lthread_mutex_unlock(&c->mutex);
         return 0;
     }
 }

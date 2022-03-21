@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
 import requests
+session = requests.Session()
 while True:
-	requests.get("http://localhost:3128")
+	session.get("http://localhost:3128")

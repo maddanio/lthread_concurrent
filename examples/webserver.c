@@ -14,7 +14,7 @@ struct cli_info {
 
 typedef struct cli_info cli_info_t;
 
-char *reply = "HTTP/1.0 200 OK\r\nContent-length: 11\r\n\r\nHello Kannan\n\n";
+char *reply = "HTTP/1.1 200 OK\r\nContent-length: 11\r\n\r\nHello Kannan\n\n";
 
 void
 http_serv(void *arg)
@@ -28,9 +28,19 @@ http_serv(void *arg)
 
     if ((buf = malloc(1024)) == NULL)
         return;
-
+    size_t n = 0;
+    uint64_t start_time = _lthread_usec_now();
     while (lthread_recv(cli_info->fd, buf, 1024, 0) > 0)
+    {
         lthread_send(cli_info->fd, reply, strlen(reply), 0);
+        if (++n % 1000 == 0)
+        {
+            uint64_t now = _lthread_usec_now();
+            fprintf(stderr, "fd %x req/s: %llu\n", cli_info->fd, 1000000000 /  (now - start_time));
+            start_time = now;
+        }
+    }
+    fprintf(stderr, "close %x after %zu\n", cli_info->fd, n);
     lthread_close(cli_info->fd);
     free(buf);
     free(arg);
@@ -101,7 +111,7 @@ listener(void *arg)
 int
 main(int argc, char **argv)
 {
-    lthread_run(listener, 0, 0, 10);
+    lthread_run(listener, 0, 0, 0);
 
     return 0;
 }
