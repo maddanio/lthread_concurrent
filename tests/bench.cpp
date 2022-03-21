@@ -71,6 +71,7 @@ public:
         lthread_cond_create(&_cond);
         lthread_spawn(
             [](void* arg){
+                fprintf(stderr, "generator lthread %p\n", lthread_current());
                 auto self = (generator_t*)arg;
                 self->_fun([self](value_t value){
                     self->push(std::move(value));
@@ -118,6 +119,7 @@ void bench_lthread_generator()
     timer_t timer{"lthread generator"};
     count = 0;
     lthread_run([](void*){
+        fprintf(stderr, "main lthread %p\n", lthread_current());
         generator_t<size_t> generator{[](auto push){
             for (size_t i = 0; i < n_iter; ++i)
                 push(n_iter - i - 1);
@@ -140,7 +142,7 @@ void bench_lthread_generator()
             }
         }
         generator.pull();
-    }, 0, 0, 10);
+    }, 0, 0, 1);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
     else

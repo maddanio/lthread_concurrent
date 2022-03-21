@@ -46,7 +46,7 @@
 #define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
 
-#define LTHREAD_TRACE 1
+#define LTHREAD_TRACE 0
 
 #define BIT(x) (1 << (x))
 #define CLEARBIT(x) ~(1 << (x))
