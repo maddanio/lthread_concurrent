@@ -178,19 +178,13 @@ int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
         return err;
     lt->is_running = false;
     lt->is_blocked = false;
-#if USE_MINICORO
-    mco_desc desc = {
-        .func = mco_entry,
-        .user_data = lt,
-        0, // alloc
-        0, // free
-        0, // allocator
-        0, // storage size
-    };
-    mco_create(&lt->coro, &desc);
-#else
     lt->fun = fun;
     lt->arg = arg;
+#if USE_MINICORO
+    mco_desc desc = mco_desc_init(mco_entry, sched->stack_size);
+    desc.user_data = lt;
+    mco_create(&lt->coro, &desc);
+#else
     lt->ctx = make_fcontext(lt->stack + lt->stack_size, lt->stack_size, &_exec);
 #endif
 
@@ -551,11 +545,11 @@ static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sche
     }
     else
     {
-#if !USE_MINICORO
         if ((lt = calloc(1, sizeof(struct lthread))) == NULL) {
             perror("Failed to allocate memory for new lthread");
             return (errno);
         }
+#if !USE_MINICORO
         if (sched->stack_size >= LTHREAD_MMAP_MIN)
         {
             lt->stack = mmap(0, sched->stack_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
