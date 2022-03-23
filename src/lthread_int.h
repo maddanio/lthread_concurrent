@@ -30,6 +30,8 @@
 #ifndef LTHREAD_INT_H
 #define LTHREAD_INT_H
 
+#define USE_MINICORO 0
+
 #include <sys/time.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -42,6 +44,10 @@
 #include "queue.h"
 #include "tree.h"
 #include "libcontext.h"
+
+#if(USE_MINICORO)
+#include "minicoro.h"
+#endif
 
 #define MAX_STACK_SIZE (8 * 1024 * 1024) /* 2MB */
 #define LTHREAD_CACHE_SIZE 32
@@ -74,16 +80,20 @@ enum lthread_st {
 };
 
 struct lthread {
+#if USE_MINICORO
+    mco_coro*               coro;
+#else
     cpu_ctx_t               ctx;            /* cpu ctx info */
-    lthread_func            fun;            /* func lthread is running */
-    void                    *arg;           /* func args passed to func */
+    void                    *stack;         /* ptr to lthread_stack */
+    void                    *sp;            /* ptr to last stack ptr */
     size_t                  stack_size;     /* current stack_size */
     size_t                  last_stack_size; /* last yield  stack_size */
+#endif
+    lthread_func            fun;            /* func lthread is running */
+    void                    *arg;           /* func args passed to func */
     enum lthread_st         state;          /* current lthread state */
     struct lthread_sched    *sched;         /* scheduler lthread belongs to */
     int16_t                 fd_wait;        /* fd we are waiting on */
-    void                    *stack;         /* ptr to lthread_stack */
-    void                    *sp;            /* ptr to last stack ptr */
     uint64_t                sleep_usecs;    /* until when lthread is sleeping */
     RB_ENTRY(lthread)       sleep_node;     /* sleep tree node pointer */
     RB_ENTRY(lthread)       wait_node;      /* event tree node pointer */
@@ -94,7 +104,6 @@ struct lthread {
     int ready_fds; /* # of fds that are ready. for poll(2) */
     struct pollfd *pollfds;
     nfds_t nfds;
-
     bool needs_resched;
 };
 

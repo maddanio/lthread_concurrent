@@ -27,6 +27,8 @@
  */
 
 
+#define MINICORO_IMPL
+
 #include <stddef.h>
 #define LTHREAD_MMAP_MIN (1024 * 1024)
 
@@ -52,7 +54,9 @@
 
 extern int errno;
 
+#if !USE_MINICORO
 static inline void _lthread_madvise(struct lthread *lt);
+#endif
 static inline void  _lthread_resume(struct lthread *lt);
 static inline void _lthread_yield();
 static inline void _lthread_free(struct lthread *lt);
@@ -80,7 +84,6 @@ static inline struct lthread* _lthread_sched_pop_ready(lthread_sched_t* sched, b
 static inline void _lthread_sched_wake(lthread_sched_t* sched);
 static inline void _lthread_sched_wake_unsafe(lthread_sched_t* sched);
 static inline int _lthread_sched_isdone(lthread_sched_t* sched);
-static void _exec(intptr_t ltp);
 
 
 static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool);
@@ -149,6 +152,21 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     lthread_poller_close(&pool->poller);
 }
 
+#if USE_MINICORO
+void mco_entry(mco_coro* c)
+{
+    lthread_t* lthread = (lthread_t*)c->user_data;
+    lthread->fun(lthread->arg);
+}
+#else
+static void _exec(intptr_t ltp)
+{
+    struct lthread* lt = (struct lthread*)ltp;
+    lt->fun(lt->arg);
+    _lthread_exit(lt);
+}
+#endif
+
 int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
 {
     struct lthread *lt = NULL;
@@ -158,11 +176,24 @@ int lthread_create(struct lthread **new_lt, lthread_func fun, void *arg)
     int err = _lthread_allocate(&lt, sched);
     if (err != 0)
         return err;
-    lt->fun = fun;
-    lt->arg = arg;
     lt->is_running = false;
     lt->is_blocked = false;
+#if USE_MINICORO
+    mco_desc desc = {
+        .func = mco_entry,
+        .user_data = lt,
+        0, // alloc
+        0, // free
+        0, // allocator
+        0, // storage size
+    };
+    mco_create(&lt->coro, &desc);
+#else
+    lt->fun = fun;
+    lt->arg = arg;
     lt->ctx = make_fcontext(lt->stack + lt->stack_size, lt->stack_size, &_exec);
+#endif
+
     _lthread_trace_event(lt, lthread_trace_evt_spawn);
     _lthread_push_ready(lt);
     *new_lt = lt;
@@ -206,20 +237,17 @@ int _switch(cpu_ctx_t *new_ctx, cpu_ctx_t *cur_ctx)
     return 0;
 }
 
-static void _exec(intptr_t ltp)
-{
-    struct lthread* lt = (struct lthread*)ltp;
-    lt->fun(lt->arg);
-    _lthread_exit(lt);
-}
-
 void _lthread_yield()
 {
     struct lthread* lt = lthread_current();
     assert(lt->sched == _lthread_curent_sched);
     _lthread_trace_event(lt, lthread_trace_evt_yield);
+#if USE_MINICORO
+    mco_yield(lt->coro);
+#else
     lt->sp = __builtin_frame_address(0);
     _switch(&lt->sched->ctx, &lt->ctx);
+#endif
 }
 
 void _lthread_resume(struct lthread *lt)
@@ -232,8 +260,14 @@ void _lthread_resume(struct lthread *lt)
     lthread_mutex_unlock(&sched->mutex);
     assert(lt->is_running == false);
     lt->is_running = true;
+
+#if USE_MINICORO
+    mco_resume(lt->coro);
+#else
     _switch(&lt->ctx, &sched->ctx);
     _lthread_madvise(lt);
+#endif
+
     lt->state &= CLEARBIT(LT_ST_EXPIRED);
     lt->is_running = false;
     lthread_mutex_lock(&sched->mutex);
@@ -251,6 +285,7 @@ void _lthread_resume(struct lthread *lt)
     lthread_mutex_unlock(&sched->mutex);
 }
 
+#if !USE_MINICORO
 static inline void _lthread_madvise(struct lthread *lt)
 {
     size_t page_size = lt->sched->page_size;
@@ -267,6 +302,7 @@ static inline void _lthread_madvise(struct lthread *lt)
         lt->last_stack_size = current_stack_size;
     }
 }
+#endif
 
 void _lthread_sched_free(lthread_sched_t* sched)
 {
@@ -515,6 +551,7 @@ static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sche
     }
     else
     {
+#if !USE_MINICORO
         if ((lt = calloc(1, sizeof(struct lthread))) == NULL) {
             perror("Failed to allocate memory for new lthread");
             return (errno);
@@ -530,6 +567,7 @@ static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sche
             return (errno);
         }
         lt->stack_size = sched->stack_size;
+#endif
     }
     lt->sched = sched;
     *new_lt = lt;
@@ -538,6 +576,10 @@ static inline int _lthread_allocate(struct lthread **new_lt, struct lthread_sche
 
 static inline void _lthread_free(struct lthread *lt)
 {
+#if USE_MINICORO
+    mco_destroy(lt->coro);
+    free(lt);
+#else
     if (lt->sched->lthread_cache_size < LTHREAD_CACHE_SIZE)
     {
         void* stack = lt->stack;
@@ -555,12 +597,15 @@ static inline void _lthread_free(struct lthread *lt)
             free(lt->stack);
         free(lt);
     }
+#endif
 }
 
 static inline void _lthread_exit(struct lthread *lt)
 {
     lt->state |= BIT(LT_ST_EXITED);
+#if !USE_MINICORO
     lt->sp = lt->stack + lt->stack_size;
+#endif
     _lthread_yield();
 }
 
