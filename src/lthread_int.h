@@ -30,7 +30,7 @@
 #ifndef LTHREAD_INT_H
 #define LTHREAD_INT_H
 
-#define USE_MINICORO 0
+#define USE_MINICORO 1
 
 #include <sys/time.h>
 #include <sys/types.h>

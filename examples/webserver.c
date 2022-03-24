@@ -111,7 +111,7 @@ listener(void *arg)
 int
 main(int argc, char **argv)
 {
-    lthread_run(listener, 0, 0, 0);
+    lthread_run(listener, 0, 0, 4);
 
     return 0;
 }

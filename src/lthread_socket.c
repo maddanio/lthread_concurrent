@@ -68,29 +68,6 @@ x {                                                         \
     return (ret);                                           \
 }                                                           \
 
-#define LTHREAD_RECV_EXACT(x, y)                            \
-x {                                                         \
-    ssize_t ret = 0;                                        \
-    ssize_t recvd = 0;                                      \
-    while (recvd != length) {                               \
-        ret = y;                                            \
-        if (ret > 0)                                        \
-            recvd += ret;                                   \
-        else if (ret == 0)                                  \
-            break;                                          \
-        else                                                \
-        {                                                   \
-            if (errno == EAGAIN) {                          \
-                if (_lthread_wait_fd(fd, LT_EV_READ) == -1) \
-                    return -1;                              \
-            } else {                                        \
-                return -1;                                  \
-            }                                               \
-        }                                                   \
-    }                                                       \
-    return (recvd);                                         \
-}                                                           \
-
 
 #define LTHREAD_SEND(x, y)                                  \
 x {                                                         \
@@ -107,28 +84,6 @@ x {                                                         \
         }                                                   \
     }                                                       \
     return ret;                                             \
-}                                                           \
-
-#define LTHREAD_SEND_EXACT(x, y)                            \
-x {                                                         \
-    ssize_t ret = 0;                                        \
-    ssize_t sent = 0;                                       \
-    while (sent != length) {                                \
-        ret = y;                                            \
-        if (ret == -1) {                                    \
-            if (errno == EAGAIN) {                          \
-                if (_lthread_wait_fd(fd, LT_EV_WRITE) == -1)\
-                    return -1;                              \
-            } else {                                        \
-                return -1;                                  \
-            }                                               \
-        } else if (ret == 0) {                              \
-            break;                                          \
-        } else {                                            \
-            sent += ret;                                    \
-        }                                                   \
-    }                                                       \
-    return sent;                                            \
 }                                                           \
 
 int lthread_accept(int fd, struct sockaddr *addr, socklen_t *len)
@@ -262,18 +217,6 @@ LTHREAD_RECV(
     read(fd, buf, length)
 )
 
-LTHREAD_RECV_EXACT(
-    ssize_t lthread_recv_exact(int fd, void *buf, size_t length, int flags,
-        uint64_t timeout),
-    recv(fd, buf + recvd, length - recvd, flags FLAG)
-)
-
-LTHREAD_RECV_EXACT(
-    ssize_t lthread_read_exact(int fd, void *buf, size_t length,
-        uint64_t timeout),
-    read(fd, buf + recvd, length - recvd)
-)
-
 LTHREAD_RECV(
     ssize_t lthread_recvmsg(int fd, struct msghdr *message, int flags,
         uint64_t timeout),
@@ -284,16 +227,6 @@ LTHREAD_RECV(
     ssize_t lthread_recvfrom(int fd, void *buf, size_t length, int flags,
         struct sockaddr *address, socklen_t *address_len, uint64_t timeout),
     recvfrom(fd, buf, length, flags FLAG, address, address_len)
-)
-
-LTHREAD_SEND_EXACT(
-    ssize_t lthread_send(int fd, const void *buf, size_t length, int flags),
-    send(fd, ((char *)buf) + sent, length - sent, flags FLAG)
-)
-
-LTHREAD_SEND_EXACT(
-    ssize_t lthread_write(int fd, const void *buf, size_t length),
-    write(fd, ((char *)buf) + sent, length - sent)
 )
 
 LTHREAD_SEND(
@@ -369,34 +302,5 @@ static inline int _lthread_unblock_fd(int fd)
     {
         return 0;
     }
-}
 
-#ifdef __FreeBSD__
-int lthread_sendfile(
-    int fd,
-    int s,
-    off_t offset,
-    size_t nbytes,
-    struct sf_hdtr *hdtr
-)
-{
-    off_t sbytes = 0;
-    int ret = 0;
-    struct lthread *lt = _lthread_get_sched()->current_lthread;
-    do {
-        ret = sendfile(fd, s, offset, nbytes, hdtr, &sbytes, 0);
-        if (ret == 0)
-            return (0);
-        if (sbytes)
-            offset += sbytes;
-        sbytes = 0;
-        if (ret == -1)
-        {
-            if (errno == EAGAIN)
-                _lthread_wait_fd(lt, s, LT_EV_WRITE);
-            else
-                return -1;
-        }
-    } while (1);
 }
-#endif

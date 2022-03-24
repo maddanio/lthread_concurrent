@@ -64,6 +64,7 @@ int     lthread_pipe(int fildes[2]);
 int     lthread_accept(int fd, struct sockaddr *, socklen_t *);
 int     lthread_close(int fd);
 int     lthread_connect(int fd, struct sockaddr *, socklen_t);
+
 ssize_t lthread_recv(
     int fd,
     void *buf,
@@ -72,13 +73,6 @@ ssize_t lthread_recv(
 );
 ssize_t lthread_read(int fd, void *buf, size_t length);
 ssize_t lthread_readline(int fd, char **buf, size_t max);
-ssize_t lthread_recv_exact(
-    int fd,
-    void *buf,
-    size_t buf_len,
-    int flags
-);
-ssize_t lthread_read_exact(int fd, void *buf, size_t length);
 ssize_t lthread_recvmsg(
     int fd,
     struct msghdr *message,
@@ -92,6 +86,7 @@ ssize_t lthread_recvfrom(
     struct sockaddr *address,
     socklen_t *address_len
 );
+
 ssize_t lthread_send(int fd, const void *buf, size_t buf_len, int flags);
 ssize_t lthread_write(int fd, const void *buf, size_t buf_len);
 ssize_t lthread_sendmsg(int fd, const struct msghdr *message, int flags);
@@ -103,10 +98,6 @@ ssize_t lthread_sendto(
     const struct sockaddr *dest_addr,
     socklen_t dest_len
 );
-ssize_t lthread_writev(int fd, struct iovec *iov, int iovcnt);
-#ifdef __FreeBSD__
-int     lthread_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr);
-#endif
 
 #ifdef __cplusplus
 }
