@@ -71,7 +71,6 @@ public:
         lthread_cond_create(&_cond);
         lthread_spawn(
             [](void* arg){
-                fprintf(stderr, "generator lthread %p\n", lthread_current());
                 auto self = (generator_t*)arg;
                 self->_fun([self](value_t value){
                     self->push(std::move(value));
@@ -84,7 +83,7 @@ public:
     std::optional<value_t> pull()
     {
         lthread_cond_lock(_cond);
-        while (!_value)
+        while (!_value && !_stopped)
             wait();
         auto result = std::move(_value);
         _value.reset();
@@ -101,6 +100,8 @@ private:
         lthread_cond_lock(_cond);
         while (_value)
             wait();
+        if (!value)
+            _stopped = true;
         _value = std::move(value);
         lthread_cond_unlock_signal(_cond);
     }
@@ -111,6 +112,7 @@ private:
     }
     fun_t _fun;
     lthread_cond* _cond;
+    bool _stopped = false;
     std::optional<value_t> _value;
 };
 
@@ -142,6 +144,7 @@ void bench_lthread_generator()
             }
         }
         generator.pull();
+        std::cerr << "!done!" << count << std::endl;
     }, 0, 0, 10);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;

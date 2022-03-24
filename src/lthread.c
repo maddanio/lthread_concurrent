@@ -84,8 +84,8 @@ static inline void _lthread_sched_wake_unsafe(lthread_sched_t* sched);
 static inline int _lthread_sched_isdone(lthread_sched_t* sched);
 static inline bool _lthread_resume_ready(struct lthread_sched *sched);
 static inline int _lthread_sched_isdone(struct lthread_sched *sched);
-static inline bool _lthread_pool_begin_deep_sleep(lthread_pool_state_t* pool);
-static inline void _lthread_pool_end_deep_sleep(lthread_pool_state_t* pool);
+static inline bool _lthread_pool_begin_deep_sleep(lthread_sched_t* sched);
+static inline void _lthread_pool_end_deep_sleep(lthread_sched_t* sched);
 static inline lthread_sched_t* _lthread_pool_get_next(lthread_pool_state_t* pool);
 static inline uint64_t _lthread_min_timeout(struct lthread_sched *sched);
 static inline void _lthread_sched_push_ready(lthread_sched_t* sched, lthread_t* lt);
@@ -120,20 +120,21 @@ void lthread_run(lthread_func main_func, void* main_arg, size_t stack_size, size
     lthread_sched_t** schedulers = (lthread_sched_t**)calloc(num_schedulers, sizeof(lthread_sched_t*));
     for (size_t i = 0; i < num_schedulers; ++i)
     {
-        schedulers[i] = _lthread_sched_create(stack_size, i + 1);
+        schedulers[i] = _lthread_sched_create(stack_size, i);
     }
 
     lthread_pool_state_t* pool = (lthread_pool_state_t*)calloc(1, sizeof(lthread_pool_state_t));
     memset(pool, 0, sizeof(lthread_pool_state_t));
     pool->mutex = lthread_mutex_create();
     pool->num_schedulers = num_schedulers;
-    pool->num_asleep = 0;
+    pool->asleep = (bool*)malloc(num_schedulers);
     lthread_poller_init(&pool->poller);
 
     lthread_sched_t* last_sched = schedulers[num_schedulers - 1];
     for (size_t i = 0; i < num_schedulers; ++i)
     {
         schedulers[i]->pool = pool;
+        pool->asleep[i] = false;
         last_sched->sched_neighbor = schedulers[i];
         last_sched = schedulers[i];
     }
@@ -362,7 +363,6 @@ void _lthread_wakeup(struct lthread *lt)
         {
             if (lt->sleep_usecs)
             {
-                fprintf(stderr, "descheduling sleep of %p\n", lt);
                 _lthread_desched_sleep_unsafe(lt);
             }
             else
@@ -403,34 +403,25 @@ static inline void* _lthread_run_sched(void* schedp)
         else
         {
             sched->block_state = LTHREAD_SCHED_IS_BLOCKING;
-            bool deep_sleep = _lthread_sched_isdone(sched);
+            bool deep_sleep = _lthread_sched_isdone(sched) && !lthread_poller_has_pending_events(&sched->pool->poller);
             if (deep_sleep)
-            {
-                //fprintf(stderr, "d%zu\n", sched->id);
-                all_done = _lthread_pool_begin_deep_sleep(sched->pool);
-            }
-            /*
-            if (all_done && lthread_poller_has_pending_events(&sched->pool->poller))
-                all_done = false;
-            */
+                all_done = _lthread_pool_begin_deep_sleep(sched);
             if (!all_done)
             {
+                uint64_t timeout = deep_sleep ? 0 : _lthread_min_timeout(sched);
+                assert(deep_sleep || timeout > 0);
                 lthread_os_cond_wait(
                     &sched->cond,
                     &sched->mutex,
-                    deep_sleep ? 0 : _lthread_min_timeout(sched)
+                    timeout
                 );
                 if (deep_sleep)
-                {
-                    //fprintf(stderr, "w%zu\n", sched->id);
-                    _lthread_pool_end_deep_sleep(sched->pool);
-                }
+                    _lthread_pool_end_deep_sleep(sched);
             }
             sched->block_state = LTHREAD_SCHED_WILL_BLOCK;
         }
         lthread_mutex_unlock(&sched->mutex);
     }
-    //fprintf(stderr, "sched done\n");
     if (sched->sched_neighbor != sched)
         _lthread_sched_wake(sched->sched_neighbor);
     return 0;
@@ -444,20 +435,24 @@ static inline int _lthread_sched_isdone(struct lthread_sched *sched)
     );
 }
 
-static inline bool _lthread_pool_begin_deep_sleep(lthread_pool_state_t* pool)
+static inline bool _lthread_pool_begin_deep_sleep(lthread_sched_t* sched)
 {
-    bool all_done;
+    lthread_pool_state_t* pool = sched->pool;
     lthread_mutex_lock(&pool->mutex);
-    all_done = ++pool->num_asleep == pool->num_schedulers;
-    //fprintf(stderr, "s%zu\n", pool->num_asleep);
+    pool->asleep[sched->id] = true;
+    bool all_done = true;
+    for (size_t i = 0; all_done && i < pool->num_schedulers; ++i)
+        if (pool->asleep[i] == false)
+            all_done = false;
     lthread_mutex_unlock(&pool->mutex);
     return all_done;
 }
 
-static inline void _lthread_pool_end_deep_sleep(lthread_pool_state_t* pool)
+static inline void _lthread_pool_end_deep_sleep(lthread_sched_t* sched)
 {
+    lthread_pool_state_t* pool = sched->pool;
     lthread_mutex_lock(&pool->mutex);
-    --pool->num_asleep;
+    pool->asleep[sched->id] = false;
     lthread_mutex_unlock(&pool->mutex);
 }
 
@@ -467,7 +462,7 @@ static inline uint64_t _lthread_min_timeout(struct lthread_sched *sched)
     if ((lt = RB_MIN(lthread_rb_sleep, &sched->sleeping)))
         if (lt->sleep_usecs > _lthread_usec_now())
             return lt->sleep_usecs;
-    return 0;
+    return 1;
 }
 
 /*
@@ -503,7 +498,6 @@ int _lthread_wait_fd(
 
 void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
 {
-    //fprintf(stderr, "%p sleeping for %llu\n", lt, msecs);
     uint64_t usecs = msecs * 1000u;
     lthread_mutex_lock(&lt->sched->mutex);
     lt->state |= BIT(LT_ST_SLEEPING);
@@ -520,7 +514,6 @@ void _lthread_sched_sleep(struct lthread *lt, uint64_t msecs)
     }
     lthread_mutex_unlock(&lt->sched->mutex);
     _lthread_yield();
-    //fprintf(stderr, "%p awoke from sleep\n", lt);
 }
 
 static inline void _lthread_desched_sleep_unsafe(struct lthread *lt)
@@ -632,13 +625,11 @@ static inline void _lthread_sched_push_ready_unsafe(
 {
     if (lt->sched->current_lthread == lt)
     {
-        //fprintf(stderr, "setting resched for %p\n", lt);
         // this prevents it from being scheduled by a work stealing neighbor...
         lt->needs_resched = true;
     }
     else
     {
-        //fprintf(stderr, "pushing %p to ready queue\n", lt);
         TAILQ_INSERT_TAIL(&lt->sched->ready, lt, ready_next);
     }
     _lthread_sched_wake_unsafe(sched);
@@ -705,6 +696,7 @@ static inline void _lthread_sched_wake_unsafe(
         case LTHREAD_SCHED_WONT_BLOCK:
             break;
         case LTHREAD_SCHED_IS_BLOCKING:
+            _lthread_pool_end_deep_sleep(sched);
             lthread_os_cond_signal(&sched->cond);
             break;
     }

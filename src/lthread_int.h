@@ -116,7 +116,7 @@ typedef enum {
 } lthread_sched_block_state_t;
 
 typedef struct lthread_pool_state {
-    size_t num_asleep;
+    bool* asleep;
     size_t num_schedulers;
     lthread_mutex_t mutex;
     lthread_sched_t* next;
