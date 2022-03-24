@@ -75,7 +75,6 @@ enum lthread_st {
     LT_ST_WAIT_WRITE,   /* lthread waiting for WRITE on socket */
     LT_ST_EXITED,       /* lthread has exited and needs cleanup */
     LT_ST_SLEEPING,     /* lthread is sleeping */
-    LT_ST_EXPIRED,      /* lthread has expired and needs to run */
     LT_ST_FDEOF         /* lthread socket has shut down */
 };
 
@@ -84,15 +83,15 @@ struct lthread {
     mco_coro*               coro;
 #else
     cpu_ctx_t               ctx;            /* cpu ctx info */
-    void                    *stack;         /* ptr to lthread_stack */
-    void                    *sp;            /* ptr to last stack ptr */
+    void*                   stack;         /* ptr to lthread_stack */
+    void*                   sp;            /* ptr to last stack ptr */
     size_t                  stack_size;     /* current stack_size */
     size_t                  last_stack_size; /* last yield  stack_size */
 #endif
     lthread_func            fun;            /* func lthread is running */
-    void                    *arg;           /* func args passed to func */
+    void*                   arg;           /* func args passed to func */
     enum lthread_st         state;          /* current lthread state */
-    struct lthread_sched    *sched;         /* scheduler lthread belongs to */
+    struct lthread_sched*_Atomic sched;         /* scheduler lthread belongs to */
     int16_t                 fd_wait;        /* fd we are waiting on */
     uint64_t                sleep_usecs;    /* until when lthread is sleeping */
     RB_ENTRY(lthread)       sleep_node;     /* sleep tree node pointer */
@@ -155,10 +154,6 @@ struct lthread_sched {
 
 void _lthread_pool_push_ready(
     lthread_pool_state_t* pool,
-    lthread_t* lt
-);
-void _lthread_sched_push_ready(
-    lthread_sched_t* sched,
     lthread_t* lt
 );
 void _lthread_desched_event(struct lthread *lt);

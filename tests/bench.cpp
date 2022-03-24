@@ -138,11 +138,11 @@ void bench_lthread_generator()
             else
             {
                 ++count;
-                fprintf(stderr, "ok %lu == %lu\n", target, *value);
+                //fprintf(stderr, "ok %lu == %lu\n", target, *value);
             }
         }
         generator.pull();
-    }, 0, 0, 1);
+    }, 0, 0, 10);
     if (count != n_iter)
         std::cerr << "fail " << count << std::endl;
     else
@@ -152,7 +152,7 @@ void bench_lthread_generator()
 int main()
 {
     //bench_thread();
-    //bench_lthread();
+    bench_lthread();
     bench_lthread_generator();
     return 0;
 }

@@ -70,14 +70,14 @@ void lthread_cond_unlock_signal(struct lthread_cond *c)
 
 static void _lthread_cond_acquire(struct lthread_cond *c, lthread_t* self, const char* context)
 {
-    fprintf(stderr, "%s: %p acquiring %p\n", context, self, c);
+    //fprintf(stderr, "%s: %p acquiring %p\n", context, self, c);
     assert(c->owner == NULL);
     c->owner = self;
 }
 
 static void _lthread_cond_release(struct lthread_cond *c, lthread_t* self, const char* context)
 {
-    fprintf(stderr, "%s: %p releasing %p\n", context, self, c);
+    //fprintf(stderr, "%s: %p releasing %p\n", context, self, c);
     assert(c->owner == self);
     c->owner = NULL;
 }
@@ -93,7 +93,7 @@ size_t _lthread_cond_num_blocked(struct lthread_cond *c)
 
 static inline int _lthread_cond_wait(struct lthread_cond *c, lthread_t* self, uint64_t timeout)
 {
-    //fprintf(stderr, "%p awaiting %p\n", self, c);
+    //fprintf(stderr, "%p awaiting %p for %llu\n", self, c, timeout);
     assert(self->is_blocked == false);
     TAILQ_INSERT_TAIL(&c->blocked_lthreads, self, blocked_next);
     self->is_blocked = true;
@@ -102,6 +102,7 @@ static inline int _lthread_cond_wait(struct lthread_cond *c, lthread_t* self, ui
     lthread_mutex_lock(&c->mutex);
     if (c->owner != self)
     {
+        //fprintf(stderr, "%p missed %p\n", self, c);
         assert(self->is_blocked);
         TAILQ_REMOVE(&c->blocked_lthreads, self, blocked_next);
         self->is_blocked = false;
@@ -109,6 +110,7 @@ static inline int _lthread_cond_wait(struct lthread_cond *c, lthread_t* self, ui
     }
     else
     {
+        //fprintf(stderr, "%p got %p\n", self, c);
         assert(!self->is_blocked);
         return 0;
     }
@@ -116,9 +118,9 @@ static inline int _lthread_cond_wait(struct lthread_cond *c, lthread_t* self, ui
 
 static inline void _lthread_cond_signal(struct lthread_cond *c, lthread_t* self, const char* context)
 {
-    _lthread_cond_release(c, self, context);
     struct lthread *lt = TAILQ_FIRST(&c->blocked_lthreads);
     //fprintf(stderr, "%p signaling %p\n", c->owner, lt);
+    _lthread_cond_release(c, self, context);
     if (lt)
     {
         assert(lt->is_blocked);
