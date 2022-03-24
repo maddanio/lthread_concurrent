@@ -1,7 +1,7 @@
 Module {
 	name: 'vgoro'
-	description: 'goroutines'
-	version: '0.0.0'
+	description: 'goroutine runtime'
+	version: '0.0.1'
 	license: 'MIT'
 	dependencies: []
 }

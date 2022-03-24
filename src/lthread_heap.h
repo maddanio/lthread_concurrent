@@ -1,7 +1,7 @@
 #pragma once
 
 /* Sudhanshu Patel sudhanshuptl13@gmail.com */
-/* Min lthread_min_heap_t implementation in c   */
+/* Min heap implementation in c   */
 
 #include<stdlib.h>
 
